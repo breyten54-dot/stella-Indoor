@@ -1,0 +1,92 @@
+============================================================
+  STELLA INDOOR - FIREBASE FIRESTORE SECURITY RULES
+============================================================
+
+STEP 1: Go to https://console.firebase.google.com/project/stella-indoor/firestore/rules
+
+STEP 2: Replace the current rules with ONE of the options below
+
+STEP 3: Click "Publish"
+
+============================================================
+OPTION A: OPEN RULES (Use this NOW while setting up)
+============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{email} {
+      allow read, write: if true;
+    }
+    match /bookings/{bookingId} {
+      allow read, write: if true;
+    }
+    match /pendingBookings/{id} {
+      allow read, write: if true;
+    }
+    match /scheduledEmails/{id} {
+      allow read, write, delete: if true;
+    }
+    match /notifications/{id} {
+      allow read, write, delete: if true;
+    }
+  }
+}
+
+============================================================
+OPTION B: LOCKED-DOWN RULES (Recommended for LIVE)
+============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users: anyone can create account, users can read own data
+    match /users/{email} {
+      allow create: if true;
+      allow read: if true;
+    }
+
+    // Bookings: anyone can read (slot availability checks),
+    // anyone can create (booking), anyone can update (cancel, attendance)
+    match /bookings/{bookingId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Pending bookings for conflict prevention
+    match /pendingBookings/{id} {
+      allow read, write: if true;
+    }
+
+    // Scheduled email reminders: users can read/write/delete their own
+    match /scheduledEmails/{id} {
+      allow read, write, delete: if true;
+    }
+
+    // In-app notifications: users can read/write/delete their own
+    match /notifications/{id} {
+      allow read, write, delete: if true;
+    }
+  }
+}
+
+============================================================
+IMPORTANT: You MUST update these rules for email cancellation
+============================================================
+The scheduledEmails and notifications collections were added
+after the initial setup. If your rules are from an earlier
+version, you MUST add these two collections or the email
+cancellation feature will silently fail.
+
+Add these two blocks to your existing rules:
+
+    match /scheduledEmails/{id} {
+      allow read, write, delete: if true;
+    }
+    match /notifications/{id} {
+      allow read, write, delete: if true;
+    }
+
+============================================================

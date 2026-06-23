@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Common validation helpers
+    function isValidBooking(booking) {
+      return booking.keys().hasAll(['courtId', 'courtName', 'date', 'startTime', 'endTime', 'status', 'clientDetails'])
+        && booking.status in ['pending', 'confirmed', 'cancelled'];
+    }
+
+    function isValidUser(user) {
+      return user.keys().hasAll(['email', 'name'])
+        && user.email.matches('^[^@]+@[^@]+$');
+    }
+
+    // Users: public creation and read (client booking app)
+    match /users/{email} {
+      allow create: if isValidUser(request.resource.data);
+      allow read: if true;
+      allow update, delete: if false;
+    }
+
+    // Bookings: public read for slot availability, public create/update for booking flow.
+    // TODO: Replace with auth/ownership-based rules once Firebase Authentication is added.
+    match /bookings/{bookingId} {
+      allow read: if true;
+      allow create: if isValidBooking(request.resource.data);
+      allow update: if isValidBooking(request.resource.data)
+        && request.resource.data.status in ['pending', 'confirmed', 'cancelled'];
+      allow delete: if false;
+    }
+
+    // Pending bookings for conflict prevention
+    match /pendingBookings/{id} {
+      allow read, write: if request.resource.data.keys().hasAll(['courtId', 'date', 'startTime', 'endTime']);
+    }
+
+    // Scheduled email reminders
+    match /scheduledEmails/{id} {
+      allow read, write, delete: if request.resource.data.keys().hasAll(['toEmail', 'bookingRef', 'scheduledAt']);
+    }
+
+    // In-app notifications
+    match /notifications/{id} {
+      allow read, write, delete: if request.resource.data.keys().hasAll(['title', 'body', 'createdAt']);
+    }
+
+    // Admin push subscriptions
+    match /adminSubscriptions/{id} {
+      allow create, update: if request.resource.data.keys().hasAll(['endpoint', 'keys']);
+      allow read, delete: if true;
+    }
+  }
+}
