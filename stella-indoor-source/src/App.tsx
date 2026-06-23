@@ -1,10 +1,13 @@
 import { Routes, Route } from 'react-router';
+import { AuthProvider } from '@/contexts/AuthContext';
 import { BookingApp } from '@/components/BookingApp';
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/*" element={<BookingApp />} />
-    </Routes>
+    <AuthProvider>
+      <Routes>
+        <Route path="/*" element={<BookingApp />} />
+      </Routes>
+    </AuthProvider>
   );
 }

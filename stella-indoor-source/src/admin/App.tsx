@@ -25,7 +25,7 @@ export default function App() {
   // Start the background email poller — ensures emails are sent while admin is logged in
   useScheduledEmails();
 
-  const { isAdmin, user, login, logout } = useAdminAuth();
+  const { isAdmin, user, login, logout, loading: authLoading } = useAdminAuth();
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -104,6 +104,14 @@ export default function App() {
     }
     return result;
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0b0f1e] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#6366f1]/30 border-t-[#6366f1] rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return <AdminLogin onLogin={login} />;

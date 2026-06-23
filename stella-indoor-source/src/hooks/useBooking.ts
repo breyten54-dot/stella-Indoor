@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { logoutUser } from '@/lib/auth';
 import type { BookingState, BookingStep, Court, DateTimeSelection, Addons, ClientDetails, DurationOption, AuthState } from '@/types/booking';
 
 const initialState: BookingState = {
@@ -25,7 +26,8 @@ export function useBooking() {
     setAuth({ isLoggedIn: true, user: { email, name, phone } });
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await logoutUser();
     setAuth(initialAuth);
     setState(initialState);
     setCurrentStep(1);

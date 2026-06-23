@@ -2,7 +2,24 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Common validation helpers
+    // Authentication helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getAuthEmail() {
+      return isSignedIn() ? request.auth.token.email : null;
+    }
+
+    function isOwner(userEmail) {
+      return isSignedIn() && getAuthEmail() == userEmail;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(getAuthEmail()));
+    }
+
+    // Validation helpers
     function isValidBooking(booking) {
       return booking.keys().hasAll(['courtId', 'courtName', 'date', 'startTime', 'endTime', 'status', 'clientDetails'])
         && booking.status in ['pending', 'confirmed', 'cancelled'];
@@ -13,42 +30,77 @@ service cloud.firestore {
         && user.email.matches('^[^@]+@[^@]+$');
     }
 
-    // Users: public creation and read (client booking app)
-    match /users/{email} {
-      allow create: if isValidUser(request.resource.data);
-      allow read: if true;
-      allow update, delete: if false;
+    // Admins collection: only admins can read the list of admins.
+    match /admins/{email} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false; // Manage admins manually in Firebase Console
     }
 
-    // Bookings: public read for slot availability, public create/update for booking flow.
-    // TODO: Replace with auth/ownership-based rules once Firebase Authentication is added.
+    // Users: public creation and read (client booking app)
+    match /users/{email} {
+      allow create: if isSignedIn()
+        && email == getAuthEmail().toLowerCase()
+        && isValidUser(request.resource.data);
+      allow read: if isOwner(email) || isAdmin();
+      allow update: if (isOwner(email) && isValidUser(request.resource.data)) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Bookings: authenticated users can create; owners/admins can read/update.
     match /bookings/{bookingId} {
-      allow read: if true;
-      allow create: if isValidBooking(request.resource.data);
-      allow update: if isValidBooking(request.resource.data)
-        && request.resource.data.status in ['pending', 'confirmed', 'cancelled'];
-      allow delete: if false;
+      allow read: if isSignedIn() && (isOwner(resource.data.userEmail) || isAdmin());
+      allow create: if isSignedIn()
+        && isValidBooking(request.resource.data)
+        && request.resource.data.userEmail == getAuthEmail();
+      allow update: if isSignedIn()
+        && isValidBooking(request.resource.data)
+        && (isAdmin() || (isOwner(resource.data.userEmail) && resource.data.userEmail == request.resource.data.userEmail));
+      allow delete: if isAdmin();
     }
 
     // Pending bookings for conflict prevention
     match /pendingBookings/{id} {
-      allow read, write: if request.resource.data.keys().hasAll(['courtId', 'date', 'startTime', 'endTime']);
+      allow read, write: if isSignedIn()
+        && request.resource.data.keys().hasAll(['courtId', 'date', 'startTime', 'endTime']);
     }
 
-    // Scheduled email reminders
-    match /scheduledEmails/{id} {
-      allow read, write, delete: if request.resource.data.keys().hasAll(['toEmail', 'bookingRef', 'scheduledAt']);
-    }
-
-    // In-app notifications
+    // Notifications: owners/admins only
     match /notifications/{id} {
-      allow read, write, delete: if request.resource.data.keys().hasAll(['title', 'body', 'createdAt']);
+      allow read: if isSignedIn() && (isOwner(resource.data.userEmail) || isAdmin());
+      allow create, update, delete: if isAdmin();
     }
 
-    // Admin push subscriptions
+    // Scheduled email reminders: admins only
+    match /scheduledEmails/{id} {
+      allow read, write, delete: if isAdmin();
+    }
+
+    // Admin push subscriptions: admins only
     match /adminSubscriptions/{id} {
-      allow create, update: if request.resource.data.keys().hasAll(['endpoint', 'keys']);
-      allow read, delete: if true;
+      allow create, update: if isAdmin() && request.resource.data.keys().hasAll(['endpoint', 'keys']);
+      allow read, delete: if isAdmin();
+    }
+
+    // Blocked slots: admins write; authenticated users read for availability checks
+    match /blockedSlots/{id} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Clips and clip of the week: public read; admins write
+    match /clips/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /clipOfTheWeek/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Password reset codes: deprecated, no access
+    match /passwordResetCodes/{id} {
+      allow read, write, delete: if false;
     }
   }
 }

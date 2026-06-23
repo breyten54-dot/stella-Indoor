@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { Mail, Lock, LogIn, UserPlus, User, Phone, ArrowLeft, KeyRound, Eye, EyeOff } from 'lucide-react';
-import { loginUser, registerUser, resetUserPassword } from '@/hooks/useFirestoreUsers';
-import { createResetCode, verifyResetCode, markCodeUsed } from '@/hooks/usePasswordReset';
-import { sendPasswordResetEmail } from '@/lib/emailService';
+import { loginWithEmailAndPassword, registerWithEmailAndPassword, sendPasswordResetEmail } from '@/lib/auth';
+import { createUserProfile, getUserProfile } from '@/hooks/useFirestoreUsers';
 import { InstallButton } from '@/components/InstallButton';
 
 interface LoginPageProps {
   onLogin: (email: string, name: string, phone: string) => void;
 }
 
-type AuthMode = 'login' | 'register' | 'reset' | 'reset-verify';
+type AuthMode = 'login' | 'register' | 'reset';
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -34,17 +33,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
-  const [showResetNewPassword, setShowResetNewPassword] = useState(false);
-  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
 
   // Reset password fields
   const [resetEmail, setResetEmail] = useState('');
-  const [resetCode, setResetCode] = useState('');
-  const [resetNewPassword, setResetNewPassword] = useState('');
-  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
   const [resetErrors, setResetErrors] = useState<Record<string, string>>({});
   const [resetLoading, setResetLoading] = useState(false);
-  const [resetStep, setResetStep] = useState<'email' | 'code'>('email');
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   const validateLogin = () => {
     const errors: typeof loginErrors = {};
@@ -68,21 +62,47 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     return Object.keys(errors).length === 0;
   };
 
+  const getFriendlyAuthError = (error: unknown): string => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('auth/invalid-credential') || message.includes('auth/wrong-password')) {
+      return 'Incorrect email or password. Please try again.';
+    }
+    if (message.includes('auth/user-not-found')) {
+      return 'No account found with this email. Please register first.';
+    }
+    if (message.includes('auth/email-already-in-use')) {
+      return 'An account with this email already exists. Please sign in instead.';
+    }
+    if (message.includes('auth/invalid-email')) {
+      return 'Invalid email address.';
+    }
+    if (message.includes('auth/weak-password')) {
+      return 'Password is too weak. Use at least 6 characters.';
+    }
+    if (message.includes('auth/too-many-requests')) {
+      return 'Too many failed attempts. Please try again later.';
+    }
+    return message || 'Something went wrong. Please try again.';
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateLogin()) return;
     setLoginLoading(true);
     setLoginErrors({});
     try {
-      const result = await loginUser(loginEmail, loginPassword);
-      if (result.success) {
-        onLogin(loginEmail, result.name, result.phone);
-      } else {
-        setLoginErrors({ general: result.message });
+      const credential = await loginWithEmailAndPassword(loginEmail, loginPassword);
+      const email = credential.user.email || loginEmail;
+      const profile = await getUserProfile(email);
+
+      if (profile?.banned) {
+        setLoginErrors({ general: 'This account has been banned due to missing games' });
+        return;
       }
+
+      onLogin(email, profile?.name || credential.user.displayName || '', profile?.phone || '');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
-      setLoginErrors({ general: msg });
+      setLoginErrors({ general: getFriendlyAuthError(err) });
     } finally {
       setLoginLoading(false);
     }
@@ -94,36 +114,43 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setRegLoading(true);
     setRegErrors({});
     try {
-      const result = await registerUser({
+      // Check Firestore profile for bans/existing account before creating Firebase Auth user.
+      const existingProfile = await getUserProfile(regEmail);
+      if (existingProfile?.banned) {
+        setRegErrors({ general: 'This account has been banned due to missing games' });
+        return;
+      }
+
+      await registerWithEmailAndPassword(regEmail, regPassword, regName);
+      const profileResult = await createUserProfile({
         email: regEmail,
         name: regName,
         phone: regPhone,
-        password: regPassword,
       });
-      if (result.success) {
-        setRegSuccess(true);
-        setTimeout(() => {
-          setMode('login');
-          setLoginEmail(regEmail);
-          setRegSuccess(false);
-          setRegName('');
-          setRegEmail('');
-          setRegPhone('');
-          setRegPassword('');
-          setRegConfirmPassword('');
-        }, 2000);
-      } else {
-        setRegErrors({ general: result.message });
+
+      if (!profileResult.success) {
+        setRegErrors({ general: profileResult.message });
+        return;
       }
+
+      setRegSuccess(true);
+      setTimeout(() => {
+        setMode('login');
+        setLoginEmail(regEmail);
+        setRegSuccess(false);
+        setRegName('');
+        setRegEmail('');
+        setRegPhone('');
+        setRegPassword('');
+        setRegConfirmPassword('');
+      }, 2000);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
-      setRegErrors({ general: msg });
+      setRegErrors({ general: getFriendlyAuthError(err) });
     } finally {
       setRegLoading(false);
     }
   };
 
-  // Step 1: Send reset code
   const handleSendResetCode = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: Record<string, string> = {};
@@ -135,45 +162,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setResetLoading(true);
     setResetErrors({});
     try {
-      const code = await createResetCode(resetEmail);
-      await sendPasswordResetEmail({ toEmail: resetEmail, resetCode: code });
-      setResetStep('code');
-    } catch (err: any) {
-      setResetErrors({ general: err?.message || 'Failed to send reset code' });
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  // Step 2: Verify code and reset password
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const errors: Record<string, string> = {};
-    if (!resetCode.trim()) errors.code = 'Reset code is required';
-    if (!resetNewPassword) errors.newPassword = 'New password is required';
-    else if (resetNewPassword.length < 6) errors.newPassword = 'Must be at least 6 characters';
-    if (resetNewPassword !== resetConfirmPassword) errors.confirmPassword = 'Passwords do not match';
-    setResetErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-
-    setResetLoading(true);
-    setResetErrors({});
-    try {
-      const isValid = await verifyResetCode(resetEmail, resetCode);
-      if (!isValid) {
-        setResetErrors({ general: 'Invalid or expired code. Please request a new one.' });
-        return;
-      }
-      await resetUserPassword(resetEmail, resetNewPassword);
-      await markCodeUsed(resetEmail);
-      setLoginEmail(resetEmail);
-      setMode('login');
-      setResetStep('email');
-      setResetCode('');
-      setResetNewPassword('');
-      setResetConfirmPassword('');
-    } catch (err: any) {
-      setResetErrors({ general: err?.message || 'Failed to reset password' });
+      await sendPasswordResetEmail(resetEmail);
+      setResetSuccess(true);
+    } catch (err: unknown) {
+      setResetErrors({ general: getFriendlyAuthError(err) });
     } finally {
       setResetLoading(false);
     }
@@ -240,7 +232,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 </div>
                 {loginErrors.password && <p className="text-xs text-[#E53935] mt-1">{loginErrors.password}</p>}
                 <div className="flex justify-end mt-1">
-                  <button type="button" onClick={() => { setMode('reset'); setResetStep('email'); setResetEmail(loginEmail); }}
+                  <button type="button" onClick={() => { setMode('reset'); setResetEmail(loginEmail); setResetSuccess(false); setResetErrors({}); }}
                     className="text-xs text-[#1B7A40] hover:text-[#7ED321] transition-colors font-medium">
                     Forgot password?
                   </button>
@@ -368,9 +360,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               </div>
             </form>
 
-          ) : resetStep === 'email' ? (
-            /* RESET PASSWORD - Step 1: Email */
+          ) : (
+            /* RESET PASSWORD */
             <form onSubmit={handleSendResetCode} className="space-y-4">
+              {resetSuccess && (
+                <div className="bg-[#1B7A40]/10 border border-[#1B7A40]/20 rounded-xl px-4 py-3 text-sm text-[#7ED321] font-semibold">
+                  Password reset email sent! Check your inbox.
+                </div>
+              )}
               {resetErrors.general && (
                 <div className="bg-[#E53935]/10 border border-[#E53935]/20 rounded-xl px-4 py-3 text-sm text-[#E53935]">
                   {resetErrors.general}
@@ -393,93 +390,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 {resetLoading ? (
                   <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
-                  <><KeyRound className="w-4 h-4" /> Send Reset Code</>
+                  <><KeyRound className="w-4 h-4" /> Send Reset Email</>
                 )}
               </button>
 
               <div className="mt-5 pt-4 border-t border-[#2A2A2A] text-center">
-                <button type="button" onClick={() => { setMode('login'); setResetStep('email'); setResetErrors({}); }}
+                <button type="button" onClick={() => { setMode('login'); setResetSuccess(false); setResetErrors({}); }}
                   className="text-xs text-[#8A8A8A] hover:text-[#1B7A40] transition-colors flex items-center gap-1.5 mx-auto">
                   <ArrowLeft className="w-3 h-3" /> Back to Sign In
-                </button>
-              </div>
-            </form>
-
-          ) : (
-            /* RESET PASSWORD - Step 2: Code + New Password */
-            <form onSubmit={handleResetPassword} className="space-y-4">
-              {resetErrors.general && (
-                <div className="bg-[#E53935]/10 border border-[#E53935]/20 rounded-xl px-4 py-3 text-sm text-[#E53935]">
-                  {resetErrors.general}
-                </div>
-              )}
-
-              <div className="bg-[#1B7A40]/10 border border-[#1B7A40]/20 rounded-xl px-4 py-3 text-sm text-[#7ED321]">
-                A 6-digit reset code was sent to <strong>{resetEmail}</strong>. Check your inbox.
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#8A8A8A] uppercase tracking-wider mb-1.5">Reset Code</label>
-                <div className="relative">
-                  <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8A8A]" />
-                  <input type="text" placeholder="000000" maxLength={6} value={resetCode}
-                    onChange={e => { setResetCode(e.target.value.replace(/\D/g, '')); setResetErrors(p => { const n = { ...p }; delete n.code; return n; }); }}
-                    className={inputClass} />
-                </div>
-                {resetErrors.code && <p className="text-xs text-[#E53935] mt-1">{resetErrors.code}</p>}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#8A8A8A] uppercase tracking-wider mb-1.5">New Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8A8A]" />
-                  <input type={showResetNewPassword ? 'text' : 'password'} placeholder="Min 6 characters" value={resetNewPassword}
-                    onChange={e => { setResetNewPassword(e.target.value); setResetErrors(p => { const n = { ...p }; delete n.newPassword; return n; }); }}
-                    className={`${inputClass} pr-11`} />
-                  <button type="button" tabIndex={-1}
-                    onClick={() => setShowResetNewPassword(!showResetNewPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A8A] hover:text-[#1B7A40] transition-colors"
-                    aria-label={showResetNewPassword ? 'Hide password' : 'Show password'}>
-                    {showResetNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {resetErrors.newPassword && <p className="text-xs text-[#E53935] mt-1">{resetErrors.newPassword}</p>}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#8A8A8A] uppercase tracking-wider mb-1.5">Confirm New Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8A8A]" />
-                  <input type={showResetConfirmPassword ? 'text' : 'password'} placeholder="Repeat password" value={resetConfirmPassword}
-                    onChange={e => { setResetConfirmPassword(e.target.value); setResetErrors(p => { const n = { ...p }; delete n.confirmPassword; return n; }); }}
-                    className={`${inputClass} pr-11`} />
-                  <button type="button" tabIndex={-1}
-                    onClick={() => setShowResetConfirmPassword(!showResetConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A8A] hover:text-[#1B7A40] transition-colors"
-                    aria-label={showResetConfirmPassword ? 'Hide password' : 'Show password'}>
-                    {showResetConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {resetErrors.confirmPassword && <p className="text-xs text-[#E53935] mt-1">{resetErrors.confirmPassword}</p>}
-              </div>
-
-              <button type="submit" disabled={resetLoading}
-                className="w-full h-14 bg-[#1B7A40] hover:bg-[#145C32] disabled:bg-[#1B7A40]/50 text-white rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-colors duration-200 mt-2">
-                {resetLoading ? (
-                  <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <><KeyRound className="w-4 h-4" /> Reset Password</>
-                )}
-              </button>
-
-              <div className="mt-5 pt-4 border-t border-[#2A2A2A] text-center space-y-2">
-                <button type="button" onClick={() => setResetStep('email')}
-                  className="text-xs text-[#8A8A8A] hover:text-[#1B7A40] transition-colors flex items-center gap-1.5 mx-auto">
-                  <ArrowLeft className="w-3 h-3" /> Request new code
-                </button>
-                <button type="button" onClick={() => { setMode('login'); setResetStep('email'); }}
-                  className="text-xs text-[#1B7A40] hover:text-[#7ED321] transition-colors flex items-center gap-1.5 mx-auto">
-                  Back to Sign In
                 </button>
               </div>
             </form>

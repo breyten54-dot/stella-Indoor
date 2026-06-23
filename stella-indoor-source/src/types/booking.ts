@@ -60,4 +60,5 @@ export interface BookingRecord {
   addons: Addons;
   totalPrice: number;
   userEmail: string;
+  userId?: string;
 }

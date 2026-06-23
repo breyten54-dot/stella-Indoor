@@ -1,18 +1,30 @@
 import { useState } from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
 
 interface Props {
-  onLogin: (password: string) => boolean;
+  onLogin: (email: string, password: string) => Promise<boolean>;
 }
 
 export function AdminLogin({ onLogin }: Props) {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password.trim()) { setError('Enter password'); return; }
-    if (!onLogin(password)) { setError('Invalid password'); setPassword(''); }
+    if (!email.trim() || !password.trim()) {
+      setError('Enter email and password');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    const success = await onLogin(email, password);
+    if (!success) {
+      setError('Invalid admin credentials');
+      setPassword('');
+    }
+    setLoading(false);
   };
 
   return (
@@ -36,19 +48,30 @@ export function AdminLogin({ onLogin }: Props) {
         <div className="bg-[#13182b] rounded-2xl p-6 border border-[#1e293b]">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
+              <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Admin Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#475569]" />
+                <input type="email" placeholder="admin@example.com" value={email}
+                  onChange={e => { setEmail(e.target.value); setError(''); }}
+                  className="w-full h-12 pl-11 pr-4 rounded-xl border border-[#1e293b] bg-[#0b0f1e] text-white text-sm font-medium placeholder:text-[#334155] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all"
+                  autoFocus />
+              </div>
+            </div>
+
+            <div>
               <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#475569]" />
                 <input type="password" placeholder="Enter admin password" value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
-                  className="w-full h-12 pl-11 pr-4 rounded-xl border border-[#1e293b] bg-[#0b0f1e] text-white text-sm font-medium placeholder:text-[#334155] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all"
-                  autoFocus />
+                  className="w-full h-12 pl-11 pr-4 rounded-xl border border-[#1e293b] bg-[#0b0f1e] text-white text-sm font-medium placeholder:text-[#334155] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all" />
               </div>
               {error && <p className="text-xs text-red-400 mt-1.5">{error}</p>}
             </div>
-            <button type="submit"
-              className="w-full h-12 bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e0] hover:to-[#7c4ee5] text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#6366f1]/20">
-              Sign In to Dashboard
+
+            <button type="submit" disabled={loading}
+              className="w-full h-12 bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e0] hover:to-[#7c4ee5] disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#6366f1]/20">
+              {loading ? 'Signing in...' : 'Sign In to Dashboard'}
             </button>
           </form>
         </div>

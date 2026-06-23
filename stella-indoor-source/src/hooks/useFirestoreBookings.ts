@@ -31,6 +31,7 @@ export async function createConfirmedBooking(data: {
   addons: Addons;
   totalPrice: number;
   userEmail: string;
+  userId?: string;
 }): Promise<BookingRecord> {
   const now = Date.now();
   const id = `ST-${now.toString(36).toUpperCase()}`;
@@ -50,6 +51,7 @@ export async function createConfirmedBooking(data: {
     addons: data.addons,
     totalPrice: data.totalPrice,
     userEmail: data.userEmail,
+    userId: data.userId,
   };
 
   await setDoc(doc(db, BOOKINGS_COLLECTION, id), {
@@ -124,6 +126,14 @@ export function subscribeToBookings(callback: (bookings: BookingRecord[]) => voi
 
 export function subscribeToUserBookings(email: string, callback: (bookings: BookingRecord[]) => void) {
   const q = query(collection(db, BOOKINGS_COLLECTION), where('userEmail', '==', email));
+  return onSnapshot(q, (snapshot) => {
+    const bookings = snapshot.docs.map(docFromSnapshot);
+    callback(bookings);
+  });
+}
+
+export function subscribeToUserBookingsByUserId(userId: string, callback: (bookings: BookingRecord[]) => void) {
+  const q = query(collection(db, BOOKINGS_COLLECTION), where('userId', '==', userId));
   return onSnapshot(q, (snapshot) => {
     const bookings = snapshot.docs.map(docFromSnapshot);
     callback(bookings);
@@ -226,6 +236,7 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
     addons: data.addons as Addons,
     totalPrice: data.totalPrice as number,
     userEmail: (data.userEmail as string) || '',
+    userId: (data.userId as string) || undefined,
   };
 }
 

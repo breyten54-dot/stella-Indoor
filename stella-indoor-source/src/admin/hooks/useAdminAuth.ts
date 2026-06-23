@@ -1,14 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import type { User } from 'firebase/auth';
+import { loginWithEmailAndPassword, logoutUser, subscribeToAuthChanges } from '@/lib/auth';
 
-const STORAGE_KEY = 'stella_admin_session_v2';
+const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
 
-// Admin password is configured at build time via the VITE_ADMIN_PASSWORD
-// environment variable. Never commit the production password to source control.
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD;
-
-if (!ADMIN_PASSWORD) {
+if (!ADMIN_EMAIL) {
   console.warn(
-    '[useAdminAuth] VITE_ADMIN_PASSWORD is not set. Admin login will not work. ' +
+    '[useAdminAuth] VITE_ADMIN_EMAIL is not set. Admin login will not work. ' +
     'Set it in your build environment or in a .env file (do not commit the value).'
   );
 }
@@ -19,29 +17,41 @@ interface AdminUser {
 }
 
 export function useAdminAuth() {
-  const [isAdmin, setIsAdmin] = useState(() => {
-    return sessionStorage.getItem(STORAGE_KEY) === 'true';
-  });
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthChanges((user) => {
+      setFirebaseUser(user);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const isAdmin = !!firebaseUser && firebaseUser.email === ADMIN_EMAIL;
 
   const [user] = useState<AdminUser>({
     name: 'Admin User',
     role: 'Facility Manager',
   });
 
-  const login = useCallback((password: string): boolean => {
-    if (ADMIN_PASSWORD && password === ADMIN_PASSWORD) {
-      sessionStorage.setItem(STORAGE_KEY, 'true');
-      setIsAdmin(true);
-      return true;
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    try {
+      const credential = await loginWithEmailAndPassword(email, password);
+      if (credential.user.email === ADMIN_EMAIL) {
+        return true;
+      }
+      // Signed in but not an admin email — sign them back out.
+      await logoutUser();
+      return false;
+    } catch {
+      return false;
     }
-    return false;
   }, []);
 
-  const logout = useCallback(() => {
-    sessionStorage.removeItem(STORAGE_KEY);
-    setIsAdmin(false);
-    window.location.reload();
+  const logout = useCallback(async () => {
+    await logoutUser();
   }, []);
 
-  return { isAdmin, user, login, logout };
+  return { isAdmin, user, login, logout, loading, firebaseUser };
 }

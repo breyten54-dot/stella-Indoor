@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Check, MailCheck, MailWarning } from 'lucide-react';
 import { useBooking } from '@/hooks/useBooking';
@@ -19,6 +19,8 @@ import { StellaClips } from '@/components/StellaClips';
 import { Footer } from '@/components/Footer';
 import { HomePage } from '@/components/HomePage';
 import { useBackButton, pushWizardStep } from '@/hooks/useBackButton';
+import { useAuth } from '@/contexts/AuthContext';
+import { getUserProfile } from '@/hooks/useFirestoreUsers';
 
 const slideVariants = {
   enterForward: { x: '100%', opacity: 0 },
@@ -32,6 +34,8 @@ export function BookingApp() {
   // Start the background email poller (runs independently of login state)
   useScheduledEmails();
 
+  const { user: firebaseUser, loading: authLoading } = useAuth();
+
   const {
     state, currentStep, direction, auth, showMyBookings, showHighlights,
     selectCourt, selectDateTime, selectDuration,
@@ -40,6 +44,20 @@ export function BookingApp() {
     login, logout, setShowMyBookings, setShowHighlights,
     getTotalPrice, canProceed,
   } = useBooking();
+
+  // Sync the local booking auth state with Firebase Auth.
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (firebaseUser && !auth.isLoggedIn) {
+      const email = firebaseUser.email || '';
+      getUserProfile(email).then((profile) => {
+        login(email, profile?.name || firebaseUser.displayName || '', profile?.phone || '');
+      });
+    } else if (!firebaseUser && auth.isLoggedIn) {
+      logout();
+    }
+  }, [firebaseUser, authLoading, auth.isLoggedIn, login, logout]);
 
   const [selectedDuration, setSelectedDurationState] = useState<1 | 1.5 | 2>(1);
   const [bookingRef, setBookingRef] = useState('');
@@ -73,6 +91,15 @@ export function BookingApp() {
   );
 
   const totalPrice = getTotalPrice();
+
+  // Show a loading state while Firebase Auth initializes or while we're syncing the profile.
+  if (authLoading || (firebaseUser && !auth.isLoggedIn)) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#1B7A40]/30 border-t-[#1B7A40] rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   // Step navigation with history tracking for back button support
   const handleNextStep = () => {
@@ -161,6 +188,7 @@ export function BookingApp() {
       addons: state.addons,
       totalPrice,
       userEmail: auth.user.email,
+      userId: firebaseUser?.uid,
     });
 
     // Schedule in-app browser reminder notifications (1h, 30m, 5m before)
