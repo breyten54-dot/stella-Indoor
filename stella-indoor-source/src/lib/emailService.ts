@@ -6,7 +6,7 @@
  * To re-enable emails, set VITE_EMAIL_FUNCTION_URL to your own email function endpoint
  * (e.g., a Firebase Cloud Function) at build time.
  *
- * Example endpoint: https://us-central1-stella-indoor.cloudfunctions.net/sendEmail
+ * Example endpoint: https://europe-west1-stella-indoor.cloudfunctions.net/sendEmail
  */
 
 import {
@@ -343,6 +343,11 @@ export async function processScheduledEmails(): Promise<number> {
 
     return sent;
   } catch (err) {
+    const code = (err && typeof err === 'object' && 'code' in err) ? String((err as { code?: unknown }).code) : '';
+    if (code === 'permission-denied') {
+      console.warn('[EmailService] processScheduledEmails: insufficient permissions (skipping)');
+      return 0;
+    }
     console.error('[EmailService] processScheduledEmails error:', err);
     return 0;
   }

@@ -285,7 +285,7 @@ export function HomePage({ userName, onBookCourt, onStellaClips, onMyBookings }:
           transition={{ delay: 1.2, duration: 0.8 }}
           className="mt-8 text-white/25 text-xs text-center"
         >
-          39 Ruth First Road, Durban, 4001
+          175 Helen Joseph Rd, Bulwer, Glenwood
         </motion.p>
       </div>
     </div>

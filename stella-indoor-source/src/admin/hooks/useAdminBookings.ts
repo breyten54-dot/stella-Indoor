@@ -44,7 +44,7 @@ export function useAdminBookings() {
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<BookingNotification[]>([]);
-  const prevBookingIds = useRef<Set<string>>(new Set());
+  const prevBookings = useRef<BookingRecord[]>([]);
   const notifRequested = useRef(false);
 
   // Request browser notification permission on first load
@@ -61,21 +61,32 @@ export function useAdminBookings() {
     setLoading(true);
     const unsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
       const data = snapshot.docs.map(docFromSnapshot);
+      const prevById = new Map(prevBookings.current.map(b => [b.id, b]));
 
-      // Detect new bookings (not in previous set, status confirmed)
-      const currentIds = new Set(data.map(b => b.id));
+      // Detect new confirmed bookings and cancellations
       const newBookings = data.filter(b => {
-        const isNew = !prevBookingIds.current.has(b.id);
+        const isNew = !prevById.has(b.id);
         const isConfirmed = b.status === 'confirmed';
-        return isNew && isConfirmed && prevBookingIds.current.size > 0;
+        return isNew && isConfirmed && prevBookings.current.length > 0;
       });
 
-      // Create notifications for new bookings
-      if (newBookings.length > 0) {
-        newBookings.forEach(b => {
+      const cancelledBookings = data.filter(b => {
+        const prev = prevById.get(b.id);
+        return prev && prev.status === 'confirmed' && b.status === 'cancelled';
+      });
+
+      const changedBookings = [...newBookings, ...cancelledBookings];
+
+      if (changedBookings.length > 0) {
+        changedBookings.forEach(b => {
+          const isCancelled = cancelledBookings.some(cb => cb.id === b.id);
+          const message = isCancelled
+            ? `${b.clientDetails.fullName} cancelled ${b.courtName}`
+            : `${b.clientDetails.fullName} booked ${b.courtName}`;
+
           const notif: BookingNotification = {
             id: `notif-${b.id}-${Date.now()}`,
-            message: `${b.clientDetails.fullName} booked ${b.courtName}`,
+            message,
             bookingId: b.id,
             clientName: b.clientDetails.fullName,
             courtName: b.courtName,
@@ -88,8 +99,9 @@ export function useAdminBookings() {
           // Browser notification
           if ('Notification' in window && Notification.permission === 'granted') {
             try {
-              new Notification('New Booking — Stella Indoor', {
-                body: `${b.clientDetails.fullName} booked ${b.courtName} for ${b.date} at ${b.startTime}`,
+              const title = isCancelled ? 'Booking Cancelled — Stella Indoor' : 'New Booking — Stella Indoor';
+              new Notification(title, {
+                body: `${b.clientDetails.fullName} ${isCancelled ? 'cancelled' : 'booked'} ${b.courtName} for ${b.date} at ${b.startTime}`,
                 icon: '/logo-original.jpg',
                 badge: '/logo-original.jpg',
                 tag: b.id,
@@ -101,8 +113,11 @@ export function useAdminBookings() {
         });
       }
 
-      prevBookingIds.current = currentIds;
+      prevBookings.current = data;
       setBookings(data);
+      setLoading(false);
+    }, (err) => {
+      console.warn('[useAdminBookings] snapshot error:', err);
       setLoading(false);
     });
     return () => unsubscribe();

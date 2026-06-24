@@ -21,10 +21,14 @@ import { Clients } from './pages/Clients';
 import { BlockedSlots } from './pages/BlockedSlots';
 import { Settings } from './pages/Settings';
 import { Toast } from './components/Toast';
+import { ServiceWorkerUpdater } from '@/components/ServiceWorkerUpdater';
 
 export default function App() {
   // Start the background email poller — ensures emails are sent while admin is logged in
   useScheduledEmails();
+
+  // Auto-detect and prompt for service worker updates
+  const updater = <ServiceWorkerUpdater swPath="/sw-admin.js" />;
 
   const { isAdmin, user, login, logout, loading: authLoading } = useAdminAuth();
 
@@ -150,5 +154,8 @@ export default function App() {
 
     {/* Toast notification */}
     {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+    {/* Service worker update prompt */}
+    {updater}
   </>);
 }

@@ -34,7 +34,7 @@ export function Footer() {
             </a>
             <span className="flex items-center gap-2">
               <MapPin className="w-4 h-4" />
-              Helen Joseph Road, Durban
+              175 Helen Joseph Rd, Bulwer, Glenwood
             </span>
           </div>
 

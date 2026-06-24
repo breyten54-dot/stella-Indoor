@@ -7,9 +7,8 @@ import { processScheduledEmails } from '@/lib/emailService';
  * Polls Firestore every 30 seconds for scheduled emails whose sendAt
  * time has passed, then sends them via EmailJS.
  *
- * Mount this once at the app root. It runs independently of user login state
- * so that emails are processed as long as any user (client or admin) has
- * the app open.
+ * Mount this once at the admin app root. The scheduledEmails collection is
+ * admin-only, so the poller must run inside the admin dashboard.
  */
 export function useScheduledEmails() {
   const processingRef = useRef(false);

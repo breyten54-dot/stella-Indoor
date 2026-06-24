@@ -55,6 +55,20 @@ if (fs.existsSync(path.join(adminDist, 'admin.html'))) {
   console.log('   📝 dist-admin/admin.html → index.html');
 }
 
+// Step 6b: Remove client-only assets from the admin site so an old cached
+// admin HTML can never pull in the client booking app chunks.
+const adminHtml = fs.readFileSync(path.join(adminDist, 'index.html'), 'utf-8');
+const adminAssetNames = new Set((adminHtml.match(/\/assets\/[^"']+/g) || []).map(m => path.basename(m)));
+const adminAssetDir = path.join(adminDist, 'assets');
+if (fs.existsSync(adminAssetDir)) {
+  for (const filename of fs.readdirSync(adminAssetDir)) {
+    if (!adminAssetNames.has(filename)) {
+      fs.unlinkSync(path.join(adminAssetDir, filename));
+      console.log(`   🗑️  dist-admin/assets/${filename} (client-only)`);
+    }
+  }
+}
+
 // Step 7: Verify both index.html files reference EXISTING assets
 console.log('🔍 Verifying asset integrity...');
 const verifyAssets = (folder) => {

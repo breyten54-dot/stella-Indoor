@@ -16,7 +16,9 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(getAuthEmail()));
+      // Primary admin account. Add other admins by updating this rule or by
+      // creating entries in the admins collection and adding an exists() check.
+      return isSignedIn() && getAuthEmail().lower() == 'stellasportshub@gmail.com';
     }
 
     // Validation helpers

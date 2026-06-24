@@ -22,10 +22,12 @@ export default defineConfig({
         admin: path.resolve(__dirname, 'admin.html'),
       },
       output: {
-        // Force each entry into its own single chunk — no shared chunks
+        // Keep vendor code in a shared chunk; let Rollup place app-specific
+        // modules in their respective entry chunks so the admin app never
+        // executes the client entry point (src/main.tsx) just because it
+        // shares utility modules with it.
         manualChunks: (id) => {
-          if (id.includes('admin')) return 'admin'
-          return 'main'
+          if (id.includes('node_modules')) return 'vendor'
         },
       },
     },

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Lock, Mail } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
 
 interface Props {
   onLogin: (email: string, password: string) => Promise<boolean>;
@@ -8,6 +8,7 @@ interface Props {
 export function AdminLogin({ onLogin }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -62,9 +63,17 @@ export function AdminLogin({ onLogin }: Props) {
               <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#475569]" />
-                <input type="password" placeholder="Enter admin password" value={password}
+                <input type={showPassword ? 'text' : 'password'} placeholder="Enter admin password" value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
-                  className="w-full h-12 pl-11 pr-4 rounded-xl border border-[#1e293b] bg-[#0b0f1e] text-white text-sm font-medium placeholder:text-[#334155] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all" />
+                  className="w-full h-12 pl-11 pr-11 rounded-xl border border-[#1e293b] bg-[#0b0f1e] text-white text-sm font-medium placeholder:text-[#334155] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#475569] hover:text-white transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
               {error && <p className="text-xs text-red-400 mt-1.5">{error}</p>}
             </div>

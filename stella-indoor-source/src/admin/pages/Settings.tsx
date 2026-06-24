@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Save, Check, Clock, Banknote, Bell, BellOff, Shield, Trash2, AlertTriangle, Loader2, Download, Smartphone } from 'lucide-react';
 import { deleteAllBookings } from '@/hooks/useFirestoreBookings';
-import { isPushSupported, subscribeToPush, unsubscribeFromPush, isPushSubscribed } from '@/admin/lib/pushNotifications';
+import { isPushSupported, subscribeToPush, unsubscribeFromPush, isPushSubscribed, isPushSubscriptionCurrent } from '@/admin/lib/pushNotifications';
 import { InstallModal } from '@/components/InstallModal';
 
 export function Settings() {
@@ -41,7 +41,14 @@ export function Settings() {
 
       if (supported) {
         const subscribed = await isPushSubscribed();
-        setPushSubscribed(subscribed);
+        if (subscribed && !(await isPushSubscriptionCurrent())) {
+          // VAPID key rotated — clean up the stale subscription so the admin can re-subscribe.
+          await unsubscribeFromPush();
+          setPushSubscribed(false);
+          setPushError('Push keys were updated. Please enable notifications again.');
+        } else {
+          setPushSubscribed(subscribed);
+        }
       }
       setPushLoading(false);
     };

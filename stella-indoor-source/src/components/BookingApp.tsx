@@ -6,7 +6,7 @@ import { createConfirmedBooking } from '@/hooks/useFirestoreBookings';
 import { useNotifications, scheduleBookingReminders } from '@/hooks/useNotifications';
 import { getErrorMessage } from '@/lib/error';
 import { sendBookingConfirmationEmail, scheduleReminderEmails } from '@/lib/emailService';
-import { useScheduledEmails } from '@/hooks/useScheduledEmails';
+
 import { LoginPage } from '@/components/LoginPage';
 import { Navbar } from '@/components/Navbar';
 import { StepIndicator } from '@/components/StepIndicator';
@@ -23,6 +23,13 @@ import { useBackButton, pushWizardStep } from '@/hooks/useBackButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile } from '@/hooks/useFirestoreUsers';
 
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
+
 const slideVariants = {
   enterForward: { x: '100%', opacity: 0 },
   enterBackward: { x: '-40%', opacity: 0 },
@@ -32,9 +39,6 @@ const slideVariants = {
 };
 
 export function BookingApp() {
-  // Start the background email poller (runs independently of login state)
-  useScheduledEmails();
-
   const { user: firebaseUser, loading: authLoading } = useAuth();
 
   const {
@@ -159,52 +163,66 @@ export function BookingApp() {
     if (dt) selectDateTime({ ...dt, duration: selectedDuration });
   };
 
+  const handleBookAnother = () => {
+    resetBooking();
+    setShowHomePage(true);
+  };
+
   const handleConfirmBooking = async () => {
     if (!state.court || !state.dateTime || !auth.user) return;
+    const user = auth.user;
     setConfirming(true);
 
-    const details = {
-      fullName: auth.user.name,
-      email: auth.user.email,
-      phone: auth.user.phone,
-      teamName: '',
-      specialRequests: '',
-    };
-    setClientDetails(details);
-
-    const [h, m] = state.dateTime.time.split(':').map(Number);
-    const totalMinutes = h * 60 + m + state.dateTime.duration * 60;
-    const endH = Math.floor(totalMinutes / 60);
-    const endM = totalMinutes % 60;
-    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
-
-    const booking = await createConfirmedBooking({
-      courtId: state.court.id,
-      courtName: state.court.name,
-      date: state.dateTime.date,
-      startTime: state.dateTime.time,
-      endTime,
-      duration: state.dateTime.duration,
-      clientDetails: details,
-      addons: state.addons,
-      totalPrice,
-      userEmail: auth.user.email,
-      userId: firebaseUser?.uid,
-    });
-
-    // Schedule in-app browser reminder notifications (1h, 30m, 5m before)
-    await scheduleBookingReminders(
-      auth.user.email,
-      booking.id,
-      state.court.name,
-      state.dateTime.date,
-      state.dateTime.time
-    );
-
-    // Send confirmation email immediately (receipt + proof of booking)
     try {
-      const emailResult = await sendBookingConfirmationEmail({
-        toEmail: auth.user.email,
+      const details = {
+        fullName: user.name,
+        email: user.email,
+        phone: user.phone,
+        teamName: '',
+        specialRequests: '',
+      };
+      setClientDetails(details);
+
+      const [h, m] = state.dateTime.time.split(':').map(Number);
+      const totalMinutes = h * 60 + m + state.dateTime.duration * 60;
+      const endH = Math.floor(totalMinutes / 60);
+      const endM = totalMinutes % 60;
+      const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+
+      const booking = await withTimeout(
+        createConfirmedBooking({
+          courtId: state.court.id,
+          courtName: state.court.name,
+          date: state.dateTime.date,
+          startTime: state.dateTime.time,
+          endTime,
+          duration: state.dateTime.duration,
+          clientDetails: details,
+          addons: state.addons,
+          totalPrice,
+          userEmail: user.email,
+          userId: firebaseUser?.uid,
+        }),
+        10000,
+        'Booking timed out — please check your connection and try again'
+      );
+
+      // Show the confirmation screen immediately — do not wait for best-effort side effects
+      setBookingRef(booking.id);
+      completeBooking();
+
+      // Schedule in-app browser reminder notifications (1h, 30m, 5m before) — best effort, background
+      scheduleBookingReminders(
+        user.email,
+        booking.id,
+        state.court.name,
+        state.dateTime.date,
+        state.dateTime.time
+      ).catch((err) => console.warn('In-app reminder scheduling failed:', err));
+
+      // Send confirmation email immediately (receipt + proof of booking) — best effort, background
+      sendBookingConfirmationEmail({
+        toEmail: user.email,
         clientName: details.fullName,
         bookingRef: booking.id,
         courtName: state.court.name,
@@ -217,39 +235,44 @@ export function BookingApp() {
         soccerBall: state.addons.soccerBall,
         bibs: state.addons.bibs,
         teamName: details.teamName,
-      });
+      })
+        .then((emailResult) => {
+          if (emailResult.success) {
+            setEmailToast({ msg: `Confirmation email sent to ${user.email}`, ok: true });
+          } else {
+            setEmailToast({ msg: `Email failed: ${emailResult.error || 'Unknown error'}`, ok: false });
+          }
+          setTimeout(() => setEmailToast(null), 8000);
+        })
+        .catch((err: unknown) => {
+          const msg = (err && typeof err === 'object' && 'text' in err ? String((err as { text?: unknown }).text) : undefined) || getErrorMessage(err) || 'Unknown error';
+          setEmailToast({ msg: `Email error: ${msg}`, ok: false });
+          setTimeout(() => setEmailToast(null), 8000);
+        });
 
-      if (emailResult.success) {
-        setEmailToast({ msg: `Confirmation email sent to ${auth.user.email}`, ok: true });
-      } else {
-        setEmailToast({ msg: `Email failed: ${emailResult.error || 'Unknown error'}`, ok: false });
-      }
+      // Schedule 3 reminder emails (1h, 30m, at-time) via Firestore for background delivery — best effort, background
+      scheduleReminderEmails({
+        userEmail: user.email,
+        clientName: details.fullName,
+        bookingId: booking.id,
+        courtName: state.court.name,
+        date: state.dateTime.date,
+        startTime: state.dateTime.time,
+        endTime,
+        duration: state.dateTime.duration,
+        totalPrice,
+        clientPhone: details.phone,
+        soccerBall: state.addons.soccerBall,
+        bibs: state.addons.bibs,
+        teamName: details.teamName,
+      }).catch((err) => console.warn('Reminder email scheduling failed:', err));
     } catch (err: unknown) {
-      const msg = (err && typeof err === 'object' && 'text' in err ? String((err as { text?: unknown }).text) : undefined) || getErrorMessage(err) || 'Unknown error';
-      setEmailToast({ msg: `Email error: ${msg}`, ok: false });
+      console.error('Booking confirmation failed:', err);
+      setEmailToast({ msg: `Booking failed: ${getErrorMessage(err)}`, ok: false });
+      setTimeout(() => setEmailToast(null), 8000);
+    } finally {
+      setConfirming(false);
     }
-    setTimeout(() => setEmailToast(null), 8000);
-
-    // Schedule 3 reminder emails (1h, 30m, at-time) via Firestore for background delivery
-    await scheduleReminderEmails({
-      userEmail: auth.user.email,
-      clientName: details.fullName,
-      bookingId: booking.id,
-      courtName: state.court.name,
-      date: state.dateTime.date,
-      startTime: state.dateTime.time,
-      endTime,
-      duration: state.dateTime.duration,
-      totalPrice,
-      clientPhone: details.phone,
-      soccerBall: state.addons.soccerBall,
-      bibs: state.addons.bibs,
-      teamName: details.teamName,
-    }).catch((err) => console.warn('Reminder scheduling failed:', err));
-
-    setBookingRef(booking.id);
-    setConfirming(false);
-    completeBooking();
   };
 
   const stepContent = () => {
@@ -411,7 +434,7 @@ export function BookingApp() {
           <BookingConfirmation
             state={state}
             totalPrice={totalPrice}
-            onBookAnother={resetBooking}
+            onBookAnother={handleBookAnother}
             bookingRef={bookingRef}
           />
         )}

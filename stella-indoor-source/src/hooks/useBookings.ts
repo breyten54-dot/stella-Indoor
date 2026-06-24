@@ -3,10 +3,9 @@ import {
   createConfirmedBooking,
   cancelBooking as cancelBookingDb,
   canCancelBooking,
-  isSlotAvailable as checkSlotAvailable,
   subscribeToBookings,
 } from './useFirestoreBookings';
-import type { BookingRecord, DurationOption } from '@/types/booking';
+import type { BookingRecord } from '@/types/booking';
 
 export function useBookings() {
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -25,15 +24,6 @@ export function useBookings() {
     await cancelBookingDb(id);
   };
 
-  const isSlotAvailable = async (
-    courtId: string,
-    date: string,
-    startTime: string,
-    duration: DurationOption
-  ): Promise<boolean> => {
-    return checkSlotAvailable(courtId, date, startTime, duration);
-  };
-
   const canCancel = (date: string, startTime: string): boolean => {
     return canCancelBooking(date, startTime);
   };
@@ -41,7 +31,6 @@ export function useBookings() {
   return {
     createBooking,
     cancelUserBooking,
-    isSlotAvailable,
     canCancel,
   };
 }

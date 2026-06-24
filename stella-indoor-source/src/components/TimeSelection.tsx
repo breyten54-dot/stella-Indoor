@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Clock, AlertCircle } from 'lucide-react';
 import { OPERATING_HOURS, DURATION_OPTIONS } from '@/data/constants';
-import { isSlotAvailable } from '@/hooks/useFirestoreBookings';
+import { getBlockedSlotsForCourtAndDate, getCourtBookedIntervals } from '@/hooks/useFirestoreBookings';
 import type { DateTimeSelection, DurationOption } from '@/types/booking';
 
 interface SlotInfo {
@@ -47,6 +47,11 @@ function getAllSlots(dayOfWeek: number): SlotInfo[] {
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+function timeToDecimal(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h + (m || 0) / 60;
+}
+
 interface TimeSelectionProps {
   selectedDateTime: DateTimeSelection | null;
   selectedDuration: DurationOption;
@@ -70,48 +75,77 @@ export function TimeSelection({ selectedDateTime, selectedDuration, courtId, onS
   const isSunday = activeDate.getDay() === 0;
   const closingHour = isSunday ? OPERATING_HOURS.sunday.end : OPERATING_HOURS.weekday.end;
 
-  // Check slot availability against Firestore whenever date/duration/court changes
+  // Load availability (bookings + blocked slots) and compute slot states in one pass
   useEffect(() => {
     if (!courtId) return;
 
     const baseSlots = getAllSlots(activeDate.getDay());
-    setSlots(baseSlots); // Show loading state
+    setSlots(baseSlots.map(s => ({ ...s, checking: true, available: false, sufficient: false })));
 
     let cancelled = false;
 
-    async function checkSlots() {
-      const checked = await Promise.all(
-        baseSlots.map(async (slot) => {
+    async function loadAvailability() {
+      try {
+        const [booked, blocked] = await Promise.all([
+          getCourtBookedIntervals(courtId!, dateStr),
+          getBlockedSlotsForCourtAndDate(courtId!, dateStr),
+        ]);
+
+        const intervals = [...booked, ...blocked].map((b) => ({
+          start: timeToDecimal(b.startTime),
+          end: timeToDecimal(b.endTime),
+        }));
+
+        if (cancelled) return;
+
+        const checked = baseSlots.map((slot) => {
           const slotStart = slot.hour;
           const [slotH, slotM] = slot.time.split(':').map(Number);
           const slotMinutes = slotH * 60 + slotM;
 
-          // Check past time (using full minutes for 30-min slot accuracy)
+          // Past time
           if (dateStr === todayStr && slotMinutes <= currentTimeMinutes) {
             return { ...slot, checking: false, available: false, sufficient: false };
           }
 
-          // Check if slot can accommodate the duration (before closing)
+          // Fits before closing
           const endHour = slotStart + selectedDuration;
           if (endHour > closingHour) {
             return { ...slot, checking: false, available: true, sufficient: false };
           }
 
-          // Check against Firestore bookings
-          const avail = await isSlotAvailable(courtId!, dateStr, slot.time, selectedDuration);
+          // Overlap with any unavailable interval
+          const overlaps = intervals.some((interval) => {
+            const startDecimal = slot.hour;
+            const endDecimal = startDecimal + selectedDuration;
+            return startDecimal < interval.end && endDecimal > interval.start;
+          });
+
           return {
             ...slot,
             checking: false,
             available: true,
-            sufficient: avail,
+            sufficient: !overlaps,
           };
-        })
-      );
+        });
 
-      if (!cancelled) setSlots(checked);
+        setSlots(checked);
+      } catch (err) {
+        console.error('[TimeSelection] availability load failed:', err);
+        if (cancelled) return;
+        // On failure, mark all future slots as available but not sufficient
+        setSlots(baseSlots.map((slot) => {
+          const slotStart = slot.hour;
+          const endHour = slotStart + selectedDuration;
+          if (endHour > closingHour) {
+            return { ...slot, checking: false, available: true, sufficient: false };
+          }
+          return { ...slot, checking: false, available: true, sufficient: true };
+        }));
+      }
     }
 
-    checkSlots();
+    loadAvailability();
     return () => { cancelled = true; };
   }, [activeDate, courtId, dateStr, todayStr, currentTimeMinutes, closingHour, selectedDuration]);
 

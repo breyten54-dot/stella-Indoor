@@ -96,7 +96,7 @@ The VAPID keys authenticate your server to the browser's push service. **Never c
 4. In `stella-indoor-source/.env`, point the client/admin builds at the deployed function:
 
    ```bash
-   VITE_EMAIL_FUNCTION_URL=https://us-central1-stella-indoor.cloudfunctions.net/sendEmail
+   VITE_EMAIL_FUNCTION_URL=https://europe-west1-stella-indoor.cloudfunctions.net/sendEmail
    ```
 
 ---

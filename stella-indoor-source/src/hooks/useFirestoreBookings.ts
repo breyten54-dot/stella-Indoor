@@ -1,7 +1,6 @@
 import {
   collection,
   doc,
-  setDoc,
   getDoc,
   getDocs,
   updateDoc,
@@ -11,13 +10,16 @@ import {
   onSnapshot,
   Timestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import type { BookingRecord, DurationOption, ClientDetails, Addons } from '@/types/booking';
 import type { BlockedSlot } from '@/admin/hooks/useBlockedSlots';
 
 const BLOCKED_SLOTS_COLLECTION = 'blockedSlots';
 
 const BOOKINGS_COLLECTION = 'bookings';
+
+const CREATE_BOOKING_URL = import.meta.env.VITE_CREATE_BOOKING_FUNCTION_URL
+  || 'https://europe-west1-stella-indoor.cloudfunctions.net/createBooking';
 
 // ---- Create a confirmed booking (cash payment) ----
 export async function createConfirmedBooking(data: {
@@ -54,10 +56,21 @@ export async function createConfirmedBooking(data: {
     userId: data.userId,
   };
 
-  await setDoc(doc(db, BOOKINGS_COLLECTION, id), {
-    ...booking,
-    createdAt: Timestamp.fromMillis(booking.createdAt),
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) {
+    throw new Error('User not authenticated');
+  }
+
+  const res = await fetch(CREATE_BOOKING_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...data, idToken, id }),
   });
+
+  const result = (await res.json()) as { success?: boolean; bookingId?: string; error?: string };
+  if (!res.ok || !result.success) {
+    throw new Error(result.error || `Booking failed (${res.status})`);
+  }
 
   return booking;
 }
@@ -99,16 +112,6 @@ export async function getBookingsByUser(email: string): Promise<BookingRecord[]>
   return snapshot.docs.map(docFromSnapshot);
 }
 
-export async function getBookingsByCourtAndDate(courtId: string, date: string): Promise<BookingRecord[]> {
-  const q = query(
-    collection(db, BOOKINGS_COLLECTION),
-    where('courtId', '==', courtId),
-    where('date', '==', date)
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(docFromSnapshot).filter(b => b.status === 'confirmed');
-}
-
 export async function getBookingById(id: string): Promise<BookingRecord | null> {
   const snap = await getDoc(doc(db, BOOKINGS_COLLECTION, id));
   if (!snap.exists()) return null;
@@ -121,6 +124,8 @@ export function subscribeToBookings(callback: (bookings: BookingRecord[]) => voi
   return onSnapshot(collection(db, BOOKINGS_COLLECTION), (snapshot) => {
     const bookings = snapshot.docs.map(docFromSnapshot).filter(b => b.status === 'confirmed');
     callback(bookings);
+  }, (err) => {
+    console.warn('[subscribeToBookings] snapshot error:', err);
   });
 }
 
@@ -129,6 +134,8 @@ export function subscribeToUserBookings(email: string, callback: (bookings: Book
   return onSnapshot(q, (snapshot) => {
     const bookings = snapshot.docs.map(docFromSnapshot);
     callback(bookings);
+  }, (err) => {
+    console.warn('[subscribeToUserBookings] snapshot error:', err);
   });
 }
 
@@ -137,6 +144,8 @@ export function subscribeToUserBookingsByUserId(userId: string, callback: (booki
   return onSnapshot(q, (snapshot) => {
     const bookings = snapshot.docs.map(docFromSnapshot);
     callback(bookings);
+  }, (err) => {
+    console.warn('[subscribeToUserBookingsByUserId] snapshot error:', err);
   });
 }
 
@@ -181,40 +190,42 @@ export async function getBlockedSlotsForCourtAndDate(courtId: string, date: stri
   });
 }
 
-// ---- Overlap Check ----
+// ---- Court availability (server-side) ----
+// Clients cannot query all bookings due to security rules, so we use a
+// Cloud Function that returns only the booked time intervals.
 
-export async function isSlotAvailable(
-  courtId: string,
-  date: string,
-  startTime: string,
-  duration: DurationOption
-): Promise<boolean> {
-  // Check existing confirmed bookings
-  const existing = await getBookingsByCourtAndDate(courtId, date);
+const CHECK_SLOT_FUNCTION_URL = import.meta.env.VITE_CHECK_SLOT_FUNCTION_URL
+  || 'https://europe-west1-stella-indoor.cloudfunctions.net/getCourtBookedIntervals';
 
-  const startDecimal = timeToDecimal(startTime);
-  const endDecimal = startDecimal + duration;
+export async function getCourtBookedIntervals(courtId: string, date: string): Promise<{ startTime: string; endTime: string }[]> {
+  try {
+    const response = await fetch(CHECK_SLOT_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courtId, date }),
+    });
 
-  for (const booking of existing) {
-    const bStart = timeToDecimal(booking.startTime);
-    const bEnd = timeToDecimal(booking.endTime);
-    if (startDecimal < bEnd && bStart < endDecimal) {
-      return false;
+    if (!response.ok) {
+      console.warn('[getCourtBookedIntervals] HTTP', response.status);
+      return [];
     }
+
+    const data = (await response.json()) as {
+      success?: boolean;
+      bookings?: { startTime: string; endTime: string }[];
+      blocked?: { startTime: string; endTime: string }[];
+      intervals?: { startTime: string; endTime: string }[];
+    };
+
+    return [
+      ...(data.bookings || []),
+      ...(data.blocked || []),
+      ...(data.intervals || []),
+    ];
+  } catch (err) {
+    console.error('[getCourtBookedIntervals] Error:', err);
+    return [];
   }
-
-  // Check blocked slots (block bookings, closed, maintenance)
-  const blocked = await getBlockedSlotsForCourtAndDate(courtId, date);
-
-  for (const block of blocked) {
-    const bStart = timeToDecimal(block.startTime);
-    const bEnd = timeToDecimal(block.endTime);
-    if (startDecimal < bEnd && bStart < endDecimal) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 // ---- Helpers ----
@@ -240,7 +251,3 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
   };
 }
 
-function timeToDecimal(time: string): number {
-  const [h, m] = time.split(':').map(Number);
-  return h + m / 60;
-}

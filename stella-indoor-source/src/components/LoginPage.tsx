@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Mail, Lock, LogIn, UserPlus, User, Phone, ArrowLeft, KeyRound, Eye, EyeOff } from 'lucide-react';
-import { loginWithEmailAndPassword, registerWithEmailAndPassword, sendPasswordResetEmail } from '@/lib/auth';
+import { loginWithEmailAndPassword, registerWithEmailAndPassword, sendPasswordResetEmail, logoutUser } from '@/lib/auth';
 import { createUserProfile, getUserProfile } from '@/hooks/useFirestoreUsers';
 import { InstallButton } from '@/components/InstallButton';
 
@@ -114,13 +114,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setRegLoading(true);
     setRegErrors({});
     try {
-      // Check Firestore profile for bans/existing account before creating Firebase Auth user.
-      const existingProfile = await getUserProfile(regEmail);
-      if (existingProfile?.banned) {
-        setRegErrors({ general: 'This account has been banned due to missing games' });
-        return;
-      }
-
       await registerWithEmailAndPassword(regEmail, regPassword, regName);
       const profileResult = await createUserProfile({
         email: regEmail,
@@ -129,6 +122,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       });
 
       if (!profileResult.success) {
+        // If the profile is banned or otherwise invalid, sign the freshly-created
+        // Firebase Auth user back out so they don't land in the app.
+        await logoutUser();
         setRegErrors({ general: profileResult.message });
         return;
       }

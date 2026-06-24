@@ -91,9 +91,13 @@ export function useNotifications(userEmail: string | null) {
       // Show browser notifications for new ones (not yet shown)
       data.filter(n => !n.shown && !n.read).forEach(n => {
         showBrowserNotification(n.title, n.message);
-        // Mark as shown
-        updateDoc(doc(db, COLLECTION, n.id), { shown: true });
+        // Mark as shown (best effort)
+        updateDoc(doc(db, COLLECTION, n.id), { shown: true }).catch((err) => {
+          console.warn('[useNotifications] mark shown failed:', err);
+        });
       });
+    }, (err) => {
+      console.warn('[useNotifications] snapshot error:', err);
     });
 
     return () => unsubscribe();
@@ -108,7 +112,9 @@ export function useNotifications(userEmail: string | null) {
       notifications.forEach(n => {
         if (n.scheduledFor && !n.shown && !n.read && n.scheduledFor <= now) {
           showBrowserNotification(n.title, n.message);
-          updateDoc(doc(db, COLLECTION, n.id), { shown: true });
+          updateDoc(doc(db, COLLECTION, n.id), { shown: true }).catch((err) => {
+            console.warn('[useNotifications] mark shown failed:', err);
+          });
         }
       });
     }, 30000); // Check every 30 seconds

@@ -22,7 +22,15 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
-const FUNCTIONS_BASE = 'https://us-central1-stella-indoor.cloudfunctions.net';
+function uint8ArrayToBase64Url(buffer: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < buffer.byteLength; i++) {
+    binary += String.fromCharCode(buffer[i]);
+  }
+  return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+const FUNCTIONS_BASE = 'https://europe-west1-stella-indoor.cloudfunctions.net';
 
 export async function subscribeToPush(): Promise<PushResult> {
   try {
@@ -43,6 +51,22 @@ export async function subscribeToPush(): Promise<PushResult> {
       await navigator.serviceWorker.ready;
     } catch (err: unknown) {
       return { success: false, error: `SW failed: ${err instanceof Error ? err.message : 'unknown'}`, step: 'sw' };
+    }
+
+    // Unsubscribe from an existing push subscription if it was created with a different VAPID key
+    try {
+      const existing = await registration.pushManager.getSubscription();
+      if (existing) {
+        const existingKey = existing.options.applicationServerKey;
+        if (existingKey) {
+          const existingKeyB64 = uint8ArrayToBase64Url(new Uint8Array(existingKey as ArrayBuffer));
+          if (existingKeyB64 !== VAPID_PUBLIC_KEY) {
+            await existing.unsubscribe();
+          }
+        }
+      }
+    } catch {
+      // ignore cleanup errors
     }
 
     // Subscribe to push
@@ -109,6 +133,28 @@ export async function isPushSubscribed(): Promise<boolean> {
     if (!registration) return false;
     const subscription = await registration.pushManager.getSubscription();
     return subscription !== null;
+  } catch {
+    return false;
+  }
+}
+
+export async function getPushSubscription(): Promise<PushSubscription | null> {
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/sw-admin.js');
+    if (!registration) return null;
+    return registration.pushManager.getSubscription();
+  } catch {
+    return null;
+  }
+}
+
+export async function isPushSubscriptionCurrent(): Promise<boolean> {
+  const subscription = await getPushSubscription();
+  if (!subscription) return false;
+  const key = subscription.options.applicationServerKey;
+  if (!key) return false;
+  try {
+    return uint8ArrayToBase64Url(new Uint8Array(key as ArrayBuffer)) === VAPID_PUBLIC_KEY;
   } catch {
     return false;
   }
