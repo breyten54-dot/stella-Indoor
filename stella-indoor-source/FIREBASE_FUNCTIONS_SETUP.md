@@ -1,15 +1,16 @@
-# Firebase Push Notifications Setup Guide
+# Firebase Cloud Functions Setup Guide
 
-This guide walks you through deploying the Firebase Cloud Functions that power push notifications for the Stella Admin app.
+This guide walks you through deploying the Firebase Cloud Functions that power **push notifications** and **transactional emails** for Stella Indoor.
 
 ---
 
 ## What you're deploying
 
-Three Cloud Functions that run automatically:
-1. **subscribeAdmin** - Saves a device's push subscription when an admin enables notifications
-2. **onBookingCreated** - Fires when a new booking is created → sends push to all admin devices
-3. **onBookingCancelled** - Fires when a booking is cancelled → sends push to all admin devices
+1. **subscribeAdmin** — Saves a device's push subscription when an admin enables notifications.
+2. **unsubscribeAdmin** — Removes a device's push subscription.
+3. **onBookingCreated** — Fires when a new booking is created → sends push to all admin devices.
+4. **onBookingCancelled** — Fires when a booking is cancelled → sends push to all admin devices.
+5. **sendEmail** — Sends transactional emails (booking confirmations, cancellations, password resets) via Brevo.
 
 ---
 
@@ -50,16 +51,16 @@ The VAPID keys authenticate your server to the browser's push service. **Never c
 
    Then run `npm run build` from `stella-indoor-source/`.
 
-3. Set both keys as runtime environment variables for Firebase Functions. For Functions v2 you can use Google Cloud Secret Manager or set runtime environment variables:
+3. Set both keys as runtime environment variables for Firebase Functions. The recommended way for v2 functions is to create a `functions/.env` file (gitignored):
 
    ```bash
-   firebase functions:config:set \
-     vapid.public="YOUR_PUBLIC_KEY_HERE" \
-     vapid.private="YOUR_PRIVATE_KEY_HERE" \
-     vapid.subject="mailto:admin@stellasports.co.za"
+   # stella-indoor-source/functions/.env
+   VAPID_PUBLIC_KEY=YOUR_PUBLIC_KEY_HERE
+   VAPID_PRIVATE_KEY=YOUR_PRIVATE_KEY_HERE
+   VAPID_SUBJECT=mailto:admin@stellasports.co.za
    ```
 
-   Alternatively, set them via the Google Cloud Console under the Functions runtime environment as:
+   Alternatively, set them via the Google Cloud Console under each Function's runtime environment as:
 
    - `VAPID_PUBLIC_KEY`
    - `VAPID_PRIVATE_KEY`
@@ -67,9 +68,31 @@ The VAPID keys authenticate your server to the browser's push service. **Never c
 
 ---
 
-## Step 3: Deploy the Functions
+## Step 3: Configure Brevo Email
+
+1. Sign up / log in at https://app.brevo.com.
+2. Go to **SMTP & API → API Keys** and create a new API key.
+3. Add the key to `functions/.env`:
+
+   ```bash
+   BREVO_API_KEY=YOUR_BREVO_API_KEY_HERE
+   # Optional overrides:
+   FROM_EMAIL=admin@stellasports.co.za
+   FROM_NAME=Stella Indoor Sports Hub
+   ```
+
+4. In `stella-indoor-source/.env`, point the client/admin builds at the deployed function:
+
+   ```bash
+   VITE_EMAIL_FUNCTION_URL=https://us-central1-stella-indoor.cloudfunctions.net/sendEmail
+   ```
+
+---
+
+## Step 4: Deploy the Functions
 
 ```bash
+cd stella-indoor-source
 firebase deploy --only functions
 ```
 
@@ -78,16 +101,22 @@ This will deploy:
 - `unsubscribeAdmin`
 - `onBookingCreated`
 - `onBookingCancelled`
+- `sendEmail`
 
 ---
 
-## Step 4: Deploy the Admin Frontend
+## Step 5: Deploy the Admin Frontend
 
 Build and deploy the `dist-admin/` folder to Firebase Hosting.
 
+```bash
+npm run build
+firebase deploy --only hosting:stella-indoor-admin
+```
+
 ---
 
-## How It Works
+## How Push Notifications Work
 
 ### When an admin enables push notifications:
 1. Admin opens Settings → taps "Enable Push Notifications"
@@ -117,6 +146,8 @@ Build and deploy the `dist-admin/` folder to Firebase Hosting.
 3. Make a booking from the client booking app
 4. You should receive a system notification on your phone within seconds
 
+To test email, make a booking or trigger a cancellation from the admin app while `VITE_EMAIL_FUNCTION_URL` is set.
+
 ---
 
 ## Troubleshooting
@@ -127,6 +158,11 @@ Build and deploy the `dist-admin/` folder to Firebase Hosting.
 - Check Firebase Functions logs: `firebase functions:log`
 - Ensure admin is logged in when enabling push
 - On iOS: Must add PWA to Home Screen first (Safari 16.4+ only)
+
+**Emails not sending?**
+- Confirm `BREVO_API_KEY` is set in the `sendEmail` function environment
+- Verify `VITE_EMAIL_FUNCTION_URL` points to the deployed function URL
+- Check `firebase functions:log` for Brevo API errors
 
 **Function deployment fails?**
 - Make sure you're on Blaze plan (free tier includes 125K invocations/month)

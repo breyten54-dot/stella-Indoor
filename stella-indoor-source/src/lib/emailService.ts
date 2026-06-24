@@ -17,6 +17,11 @@ import { db } from '@/lib/firebase';
 const EMAIL_FUNCTION_URL = import.meta.env.VITE_EMAIL_FUNCTION_URL;
 const SCHEDULED_EMAILS_COLLECTION = 'scheduledEmails';
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 type ReminderType = 'reminder-1h' | 'reminder-30m' | 'reminder-at-time';
 
 // ============================================================================
@@ -65,9 +70,9 @@ async function postEmail(data: {
 
     console.log(`[EmailService] Email sent to ${data.toEmail}, messageId: ${result.messageId}`);
     return { success: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[EmailService] Fetch error:', err);
-    return { success: false, error: err?.message || 'Network error - function may not be deployed' };
+    return { success: false, error: getErrorMessage(err) || 'Network error - function may not be deployed' };
   }
 }
 
@@ -288,8 +293,8 @@ export async function processScheduledEmails(): Promise<number> {
           await updateDoc(doc(db, SCHEDULED_EMAILS_COLLECTION, e.id), { cancelled: true });
           continue;
         }
-      } catch (err: any) {
-        console.warn(`[EmailService] Booking check failed for ${e.bookingId}: ${err.message}`);
+      } catch (err: unknown) {
+        console.warn(`[EmailService] Booking check failed for ${e.bookingId}: ${getErrorMessage(err)}`);
         // If we can't verify, mark as cancelled to be safe (prevents spam)
         await updateDoc(doc(db, SCHEDULED_EMAILS_COLLECTION, e.id), { cancelled: true });
         continue;
@@ -366,12 +371,12 @@ export async function cancelScheduledEmailsForBooking(bookingId: string): Promis
         await deleteDoc(snap.ref);
         deletedCount++;
         console.log(`[EmailService] Deleted scheduled email: ${snap.id}`);
-      } catch (err: any) {
-        console.warn(`[EmailService] Could not delete ${snap.id}: ${err.message}`);
+      } catch (err: unknown) {
+        console.warn(`[EmailService] Could not delete ${snap.id}: ${getErrorMessage(err)}`);
       }
     }
-  } catch (err: any) {
-    console.error(`[EmailService] Query approach failed: ${err.message}`);
+  } catch (err: unknown) {
+    console.error(`[EmailService] Query approach failed: ${getErrorMessage(err)}`);
   }
 
   // Approach 2: Direct document deletion (fallback — known document IDs)

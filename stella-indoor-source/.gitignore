@@ -37,3 +37,6 @@ firebase-key.json
 
 # Deployment artifacts
 stella-deploy-folder.zip
+
+# Functions build output
+functions/lib/

@@ -12,7 +12,7 @@ service cloud.firestore {
     }
 
     function isOwner(userEmail) {
-      return isSignedIn() && getAuthEmail() == userEmail;
+      return isSignedIn() && getAuthEmail().lower() == userEmail.lower();
     }
 
     function isAdmin() {
@@ -33,13 +33,14 @@ service cloud.firestore {
     // Admins collection: only admins can read the list of admins.
     match /admins/{email} {
       allow read: if isAdmin();
-      allow create, update, delete: if false; // Manage admins manually in Firebase Console
+      allow create: if false; // Manage admins manually in Firebase Console
+      allow update, delete: if false; // Manage admins manually in Firebase Console
     }
 
     // Users: public creation and read (client booking app)
     match /users/{email} {
       allow create: if isSignedIn()
-        && email == getAuthEmail().toLowerCase()
+        && email.lower() == getAuthEmail().lower()
         && isValidUser(request.resource.data);
       allow read: if isOwner(email) || isAdmin();
       allow update: if (isOwner(email) && isValidUser(request.resource.data)) || isAdmin();
