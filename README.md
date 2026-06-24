@@ -40,9 +40,7 @@ The project is configured for two Firebase Hosting sites:
 
 Run `npm run deploy` from `stella-indoor-source/` after setting environment variables.
 
-### Netlify (manual)
-- Deploy `stella-client-app/` for the client booking app (includes `/admin` path).
-- Deploy `stella-admin-attendance/` for the standalone admin dashboard.
+> **Note:** Netlify has been removed from this project. Use Firebase Hosting for deployment.
 
 ## Firebase Authentication Setup
 

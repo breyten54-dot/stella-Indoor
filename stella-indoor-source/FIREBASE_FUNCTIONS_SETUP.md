@@ -83,7 +83,7 @@ This will deploy:
 
 ## Step 4: Deploy the Admin Frontend
 
-Build and deploy the `dist-admin/` folder to Firebase Hosting or Netlify as you normally do.
+Build and deploy the `dist-admin/` folder to Firebase Hosting.
 
 ---
 

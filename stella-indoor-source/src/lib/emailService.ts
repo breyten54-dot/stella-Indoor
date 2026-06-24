@@ -1,17 +1,12 @@
 /**
  * Email Service — Stella Indoor Sports Hub
  *
- * Uses Brevo (formerly Sendinblue) via a Netlify Function.
- * The Netlify Function is at: /.netlify/functions/send-email
+ * Sends transactional emails via a configurable HTTP endpoint.
+ * Previously this used a Netlify Function; Netlify has been removed from the project.
+ * To re-enable emails, set VITE_EMAIL_FUNCTION_URL to your own email function endpoint
+ * (e.g., a Firebase Cloud Function) at build time.
  *
- * FREE TIER: 300 emails/day (9,000/month) — covers 42 bookings/day easily.
- *
- * Setup:
- * 1. Sign up at https://app.brevo.com
- * 2. Go to SMTP & API → API Keys → Create a new API key
- * 3. In Netlify dashboard: Site settings → Environment variables
- * 4. Add variable: BREVO_API_KEY = your-api-key
- * 5. Redeploy the site
+ * Example endpoint: https://us-central1-stella-indoor.cloudfunctions.net/sendEmail
  */
 
 import {
@@ -19,8 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-// Absolute URL so admin app (separate Netlify site) can call the client app's function
-const NETLIFY_FUNCTION_URL = 'https://stellaindoor.netlify.app/.netlify/functions/send-email';
+const EMAIL_FUNCTION_URL = import.meta.env.VITE_EMAIL_FUNCTION_URL;
 const SCHEDULED_EMAILS_COLLECTION = 'scheduledEmails';
 
 type ReminderType = 'reminder-1h' | 'reminder-30m' | 'reminder-at-time';
@@ -48,10 +42,15 @@ async function postEmail(data: {
   bibs?: string;
   addonsList?: string;
 }): Promise<{ success: boolean; error?: string }> {
-  try {
-    console.log(`[EmailService] POSTing to ${NETLIFY_FUNCTION_URL} for ${data.toEmail}`);
+  if (!EMAIL_FUNCTION_URL) {
+    console.warn('[EmailService] VITE_EMAIL_FUNCTION_URL is not set. Email not sent.');
+    return { success: false, error: 'Email service not configured' };
+  }
 
-    const response = await fetch(NETLIFY_FUNCTION_URL, {
+  try {
+    console.log(`[EmailService] POSTing to ${EMAIL_FUNCTION_URL} for ${data.toEmail}`);
+
+    const response = await fetch(EMAIL_FUNCTION_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

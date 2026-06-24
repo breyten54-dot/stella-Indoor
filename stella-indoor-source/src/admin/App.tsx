@@ -56,7 +56,7 @@ export default function App() {
       booking.date,
       booking.startTime
     );
-    // Send cancellation email to the client via Brevo/Netlify Function
+    // Send cancellation email to the client via configured email function
     try {
       const emailResult = await sendCancellationEmail({
         toEmail: booking.userEmail,
