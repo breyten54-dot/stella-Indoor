@@ -22,7 +22,8 @@ This directory contains the Stella Indoor Sports Hub booking application, Raspbe
 ```bash
 cd stella-indoor-source
 cp .env.example .env
-# Edit .env and fill in your Firebase config, admin email/password, and VAPID public key
+cp .env.secrets.example .env.secrets
+# Fill in all real values in .env.secrets, then copy the relevant ones into .env and functions/.env
 npm install
 npm run build
 ```
@@ -74,8 +75,8 @@ firebase deploy --only firestore:rules
 
 ## Important Security Notes
 
+- **Central secrets file:** All API keys, access credentials, and sensitive config live in `stella-indoor-source/.env.secrets`. It is gitignored and must never be committed. Copy values from it into `stella-indoor-source/.env` (build-time) and `stella-indoor-source/functions/.env` (runtime) as needed.
 - Firebase service-account keys were removed from this directory. If you previously shared this folder, **rotate the Firebase service-account key** in the Firebase Console.
-- The admin password is read from the `VITE_ADMIN_PASSWORD` environment variable at build time. Set it before building and never commit it.
 - The admin email is read from `VITE_ADMIN_EMAIL` at build time. It must match the email added in Firebase Authentication and the `admins` collection document ID.
 - Firebase Functions VAPID keys are read from runtime environment variables (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`). Generate fresh keys and set them before deploying functions.
 - Firestore security rules now enforce authentication and ownership. Make sure you deploy the rules after enabling Firebase Authentication.

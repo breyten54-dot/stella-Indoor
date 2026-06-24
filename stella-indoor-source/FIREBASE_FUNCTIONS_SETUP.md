@@ -14,9 +14,21 @@ This guide walks you through deploying the Firebase Cloud Functions that power *
 
 ---
 
+## Central secrets file
+
+All API keys, access credentials, and runtime secrets for this project live in **`stella-indoor-source/.env.secrets`**.
+
+- Copy `.env.secrets.example` to `.env.secrets` and fill in the real values.
+- `.env.secrets` is gitignored — **never commit it**.
+- When building or deploying, copy the relevant values from `.env.secrets` into:
+  - `stella-indoor-source/.env` (client/admin build-time variables)
+  - `stella-indoor-source/functions/.env` (Cloud Functions runtime variables)
+
+---
+
 ## Prerequisites
 
-- Node.js 20+ installed
+- Node.js 22+ installed
 - Firebase CLI installed: `npm install -g firebase-tools`
 - Logged into Firebase: `firebase login`
 - Your Firebase project initialized (you already have `firebase.json`)
@@ -77,7 +89,7 @@ The VAPID keys authenticate your server to the browser's push service. **Never c
    ```bash
    BREVO_API_KEY=YOUR_BREVO_API_KEY_HERE
    # Optional overrides:
-   FROM_EMAIL=admin@stellasports.co.za
+   FROM_EMAIL=stellasportshub@gmail.com
    FROM_NAME=Stella Indoor Sports Hub
    ```
 
