@@ -162,3 +162,4 @@ export const sendEmail = onRequest({ region: 'us-central1', cors: true }, async 
     res.status(500).json({ success: false, error: getErrorMessage(err) });
   }
 });
+

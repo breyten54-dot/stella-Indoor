@@ -33,8 +33,7 @@ service cloud.firestore {
     // Admins collection: only admins can read the list of admins.
     match /admins/{email} {
       allow read: if isAdmin();
-      allow create: if false; // Manage admins manually in Firebase Console
-      allow update, delete: if false; // Manage admins manually in Firebase Console
+      allow create, update, delete: if false; // Manage admins manually in Firebase Console
     }
 
     // Users: public creation and read (client booking app)
