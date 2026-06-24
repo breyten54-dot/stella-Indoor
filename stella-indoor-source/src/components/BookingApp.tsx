@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Check, MailCheck, MailWarning } from 'lucide
 import { useBooking } from '@/hooks/useBooking';
 import { createConfirmedBooking } from '@/hooks/useFirestoreBookings';
 import { useNotifications, scheduleBookingReminders } from '@/hooks/useNotifications';
+import { getErrorMessage } from '@/lib/error';
 import { sendBookingConfirmationEmail, scheduleReminderEmails } from '@/lib/emailService';
 import { useScheduledEmails } from '@/hooks/useScheduledEmails';
 import { LoginPage } from '@/components/LoginPage';
@@ -223,8 +224,8 @@ export function BookingApp() {
       } else {
         setEmailToast({ msg: `Email failed: ${emailResult.error || 'Unknown error'}`, ok: false });
       }
-    } catch (err: any) {
-      const msg = err?.text || err?.message || (typeof err === 'string' ? err : 'Unknown error');
+    } catch (err: unknown) {
+      const msg = (err && typeof err === 'object' && 'text' in err ? String((err as { text?: unknown }).text) : undefined) || getErrorMessage(err) || 'Unknown error';
       setEmailToast({ msg: `Email error: ${msg}`, ok: false });
     }
     setTimeout(() => setEmailToast(null), 8000);

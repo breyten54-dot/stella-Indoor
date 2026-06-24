@@ -3,6 +3,7 @@ import {
   collection, onSnapshot, doc, updateDoc, deleteDoc, query, where, orderBy, writeBatch, setDoc, getDocs
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getErrorMessage } from '@/lib/error';
 import type { NotificationRecord, NotificationType } from '@/types/notification';
 
 const COLLECTION = 'notifications';
@@ -231,12 +232,12 @@ export async function deleteRemindersForBooking(bookingId: string): Promise<numb
         await deleteDoc(snap.ref);
         deletedCount++;
         console.log(`[Notifications] Deleted reminder: ${snap.id}`);
-      } catch (err: any) {
-        console.warn(`[Notifications] Could not delete ${snap.id}: ${err.message}`);
+      } catch (err: unknown) {
+        console.warn(`[Notifications] Could not delete ${snap.id}: ${getErrorMessage(err)}`);
       }
     }
-  } catch (err: any) {
-    console.error(`[Notifications] Query failed for booking ${bookingId}: ${err.message}`);
+  } catch (err: unknown) {
+    console.error(`[Notifications] Query failed for booking ${bookingId}: ${getErrorMessage(err)}`);
   }
 
   console.log(`[Notifications] Deleted ${deletedCount} reminders for ${bookingId}`);

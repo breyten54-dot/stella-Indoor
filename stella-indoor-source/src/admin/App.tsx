@@ -7,6 +7,7 @@ import { useBlockedSlots } from './hooks/useBlockedSlots';
 import { cancelBooking } from '@/hooks/useFirestoreBookings';
 import { createCancellationNotification, deleteRemindersForBooking } from '@/hooks/useNotifications';
 import { sendCancellationEmail, cancelScheduledEmailsForBooking } from '@/lib/emailService';
+import { getErrorMessage } from '@/lib/error';
 import { useScheduledEmails } from '@/hooks/useScheduledEmails';
 import { markBookingPlayed, markBookingMissed } from '@/hooks/useFirestoreUsers';
 import { db } from '@/lib/firebase';
@@ -74,8 +75,8 @@ export default function App() {
       } else {
         showToast(`Email failed: ${emailResult.error || 'Unknown error'}`, 'error');
       }
-    } catch (err: any) {
-      showToast(`Email error: ${err?.message || 'Failed to send'}`, 'error');
+    } catch (err: unknown) {
+      showToast(`Email error: ${getErrorMessage(err) || 'Failed to send'}`, 'error');
     }
 
     // Remove any scheduled reminders for this booking
