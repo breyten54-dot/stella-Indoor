@@ -1,0 +1,43 @@
+{
+  "packageId": "com.stellaindoor.admin",
+  "host": "stella-indoor-admin.web.app",
+  "name": "Stella Indoor Admin",
+  "launcherName": "Stella Admin",
+  "display": "standalone",
+  "themeColor": "#0b0f1e",
+  "themeColorDark": "#0b0f1e",
+  "navigationColor": "#0b0f1e",
+  "navigationColorDark": "#0b0f1e",
+  "navigationDividerColor": "#0b0f1e",
+  "navigationDividerColorDark": "#0b0f1e",
+  "backgroundColor": "#0b0f1e",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://stella-indoor-admin.web.app/logo-admin.png",
+  "maskableIconUrl": "https://stella-indoor-admin.web.app/logo-admin.png",
+  "monochromeIconUrl": "https://stella-indoor-admin.web.app/badge-admin-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "C:\\android-build\\keys\\stella-admin.keystore",
+    "alias": "stella-admin"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://stella-indoor-admin.web.app/manifest-admin.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://stella-indoor-admin.web.app/",
+  "minSdkVersion": 21,
+  "orientation": "default",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}
