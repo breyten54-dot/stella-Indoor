@@ -46,3 +46,15 @@ Thumbs.db
 # Old/duplicate builds and zips (kept for reference only)
 archive/
 
+# Kimi project memory
+.kimi-memory/
+
+# Build-output snapshots (regenerable from stella-indoor-source)
+stella-indoor-source/dist-review/
+stella-client-app/
+stella-admin-attendance/
+
+# Test/build artifacts
+tmp-audit/*.png
+tmp-audit/ad-screenshots/
+.gradle/
