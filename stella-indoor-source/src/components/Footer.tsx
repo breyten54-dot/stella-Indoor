@@ -1,4 +1,5 @@
 import { MapPin, Phone, Mail } from 'lucide-react';
+import { TermsLink } from '@/components/TermsAndConditions';
 
 export function Footer() {
   return (
@@ -41,9 +42,10 @@ export function Footer() {
           {/* Divider */}
           <div className="w-full h-px bg-[#2A2A2A]" />
 
-          {/* Copyright */}
+          {/* Terms & Copyright */}
+          <TermsLink className="text-xs text-[#8A8A8A] hover:text-[#7ED321] underline underline-offset-2 transition-colors" />
           <p className="text-xs text-[#8A8A8A]">
-            © 2025 Stella Indoor Sports Hub. All rights reserved.
+            © 2026 Stella Indoor Sports Hub. All rights reserved.
           </p>
         </div>
       </div>

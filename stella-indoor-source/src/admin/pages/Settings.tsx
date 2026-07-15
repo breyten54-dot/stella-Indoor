@@ -3,31 +3,74 @@ import { Save, Check, Clock, Banknote, Bell, BellOff, Shield, Trash2, AlertTrian
 import { deleteAllBookings } from '@/hooks/useFirestoreBookings';
 import { isPushSupported, subscribeToPush, unsubscribeFromPush, isPushSubscribed, isPushSubscriptionCurrent } from '@/admin/lib/pushNotifications';
 import { InstallModal } from '@/components/InstallModal';
+import { useAppSettings } from '@/admin/hooks/useAppSettings';
+import { BatteryOptimizationGuide, BatteryOptimizationButton } from '@/admin/components/BatteryOptimizationGuide';
+import { PushDiagnostics } from '@/admin/components/PushDiagnostics';
+import { NotificationSetupGuide } from '@/admin/components/NotificationSetupGuide';
 
 export function Settings() {
+  const { settings, loading: settingsLoading, saveSettings } = useAppSettings();
+
   const [saved, setSaved] = useState(false);
-  const [openingTime, setOpeningTime] = useState('08:00');
-  const [closingTime, setClosingTime] = useState('22:00');
-  const [sunClosing, setSunClosing] = useState('21:00');
-  const [bigPrice, setBigPrice] = useState('500');
-  const [multiPrice, setMultiPrice] = useState('400');
-  const [payWindow, setPayWindow] = useState('5');
+  const [openingTime, setOpeningTime] = useState(settings.openingTime);
+  const [closingTime, setClosingTime] = useState(settings.closingTime);
+  const [sunClosing, setSunClosing] = useState(settings.sundayClosingTime);
+  const [bigPrice, setBigPrice] = useState(String(settings.bigCourtPrice));
+  const [multiPrice, setMultiPrice] = useState(String(settings.multiCourtPrice));
+  const [payWindow, setPayWindow] = useState(String(settings.paymentWindowMinutes));
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Push notification state
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(true);
   const [pushError, setPushError] = useState('');
+  const [showBatteryGuide, setShowBatteryGuide] = useState(false);
 
-  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  // Sync local form state when Firestore settings load
+  useEffect(() => {
+    setOpeningTime(settings.openingTime);
+    setClosingTime(settings.closingTime);
+    setSunClosing(settings.sundayClosingTime);
+    setBigPrice(String(settings.bigCourtPrice));
+    setMultiPrice(String(settings.multiCourtPrice));
+    setPayWindow(String(settings.paymentWindowMinutes));
+  }, [settings]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await saveSettings({
+        openingTime,
+        closingTime,
+        sundayClosingTime: sunClosing,
+        bigCourtPrice: Number(bigPrice) || 0,
+        multiCourtPrice: Number(multiPrice) || 0,
+        paymentWindowMinutes: Number(payWindow) || 1,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Failed to save settings: ${msg}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleClear = async () => {
     if (clearConfirm) {
-      await deleteAllBookings();
-      setClearConfirm(false);
+      try {
+        await deleteAllBookings();
+        setClearConfirm(false);
+        alert('All bookings have been deleted.');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        alert(`Failed to clear bookings: ${msg}`);
+      }
     } else {
       setClearConfirm(true);
     }
@@ -55,6 +98,8 @@ export function Settings() {
     checkPush();
   }, []);
 
+
+
   // Toggle push subscription
   const handlePushToggle = async () => {
     setPushLoading(true);
@@ -79,8 +124,41 @@ export function Settings() {
     setPushLoading(false);
   };
 
+  const [testPushLoading, setTestPushLoading] = useState(false);
+  const [testPushMessage, setTestPushMessage] = useState('');
+
+  const handleTestPush = async () => {
+    setTestPushLoading(true);
+    setTestPushMessage('');
+    try {
+      const res = await fetch('https://europe-west1-stella-indoor.cloudfunctions.net/sendTestPush', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = (await res.json()) as { success?: boolean; message?: string };
+      if (res.ok && data.success) {
+        setTestPushMessage('Test push sent. Close the app and wait a few seconds.');
+      } else {
+        setTestPushMessage(`Test push failed: ${data.message || res.statusText}`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setTestPushMessage(`Test push error: ${msg}`);
+    } finally {
+      setTestPushLoading(false);
+    }
+  };
+
   const rowClass = 'flex items-center justify-between py-3 border-b border-[#1e293b] last:border-0';
   const inputClass = 'h-9 w-24 px-3 rounded-lg border border-[#1e293b] bg-[#0b0f1e] text-white text-sm text-center focus:outline-none focus:border-[#6366f1] transition-all tab-nums';
+
+  if (settingsLoading) {
+    return (
+      <div className="max-w-2xl mx-auto flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-[#6366f1]" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -213,9 +291,35 @@ export function Settings() {
                 <p className="text-xs text-[#7ED321]">Subscribed. You will receive notifications even when this app is closed.</p>
               </div>
             )}
+
+            {pushSubscribed && <BatteryOptimizationButton onClick={() => setShowBatteryGuide(true)} />}
+
+            {pushSubscribed && (
+              <button
+                onClick={handleTestPush}
+                disabled={testPushLoading}
+                className="w-full h-10 rounded-xl bg-[#1e293b] hover:bg-[#334155] text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              >
+                {testPushLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+                Send Test Push Notification
+              </button>
+            )}
+
+            {testPushMessage && (
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-[#6366f1]/10 border border-[#6366f1]/20">
+                <Bell className="w-3.5 h-3.5 text-[#818cf8] shrink-0 mt-0.5" />
+                <p className="text-xs text-[#94a3b8]">{testPushMessage}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Push Diagnostics */}
+      <PushDiagnostics />
+
+      {/* Notification Setup Guide */}
+      <NotificationSetupGuide />
 
       {/* Notifications (in-app) */}
       <div className="bg-[#13182b] rounded-2xl border border-[#1e293b] p-6">
@@ -256,6 +360,9 @@ export function Settings() {
       {/* Install Modal */}
       <InstallModal open={showInstallModal} onClose={() => setShowInstallModal(false)} />
 
+      {/* Battery Optimization Guide */}
+      <BatteryOptimizationGuide open={showBatteryGuide} onClose={() => setShowBatteryGuide(false)} />
+
       {/* Danger */}
       <div className="bg-[#13182b] rounded-2xl border border-red-500/20 p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -277,9 +384,15 @@ export function Settings() {
 
       {/* Save */}
       <div className="flex justify-end">
-        <button onClick={handleSave}
-          className={`h-11 px-6 rounded-xl font-bold text-sm flex items-center gap-2 transition-all ${saved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e0] hover:to-[#7c4ee5] text-white shadow-lg shadow-[#6366f1]/20'}`}>
-          {saved ? <><Check className="w-4 h-4" /> Saved</> : <><Save className="w-4 h-4" /> Save Settings</>}
+        <button onClick={handleSave} disabled={saving}
+          className={`h-11 px-6 rounded-xl font-bold text-sm flex items-center gap-2 transition-all disabled:opacity-50 ${saved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e0] hover:to-[#7c4ee5] text-white shadow-lg shadow-[#6366f1]/20'}`}>
+          {saving ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+          ) : saved ? (
+            <><Check className="w-4 h-4" /> Saved</>
+          ) : (
+            <><Save className="w-4 h-4" /> Save Settings</>
+          )}
         </button>
       </div>
     </div>

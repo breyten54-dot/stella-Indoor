@@ -7,7 +7,7 @@ import {
   Ban, Clock, Lock, Phone, User, FileText, X
 } from 'lucide-react';
 import type { BookingRecord } from '@/types/booking';
-import type { BlockedSlot } from '../hooks/useBlockedSlots';
+import { blockAppliesToDate, type BlockedSlot } from '../hooks/useBlockedSlots';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 
 type CalendarView = 'day' | 'week' | 'month';
@@ -16,8 +16,7 @@ interface Props {
   bookings: BookingRecord[];
   blockedSlots: BlockedSlot[];
   onCancelBooking: (booking: BookingRecord) => Promise<void>;
-  onPlayed: (booking: BookingRecord) => Promise<void>;
-  onMissed: (booking: BookingRecord) => Promise<{ banned: boolean; missedCount: number }>;
+  onAttendanceChange: (booking: BookingRecord, attendance: import('@/types/booking').BookingAttendance) => Promise<void>;
 }
 
 const COURTS = [
@@ -35,9 +34,18 @@ function jsDayToIndex(jsDay: number): number {
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
 interface CalendarEntry {
   type: 'booking' | 'blocked';
   data: BookingRecord | BlockedSlot;
+  // Minute-accurate coverage of the hour cell, so half-hour
+  // bookings/blocks render as partially filled cells
+  topPct: number;
+  heightPct: number;
 }
 
 function getEntriesForSlot(
@@ -48,50 +56,39 @@ function getEntriesForSlot(
   blockedSlots: BlockedSlot[]
 ): CalendarEntry[] {
   const entries: CalendarEntry[] = [];
+  const cellStart = hour * 60;
+  const cellEnd = cellStart + 60;
+
+  const coverage = (startTime: string, endTime: string) => {
+    const overlapStart = Math.max(cellStart, timeToMinutes(startTime));
+    const overlapEnd = Math.min(cellEnd, timeToMinutes(endTime));
+    if (overlapEnd <= overlapStart) return null;
+    return {
+      topPct: ((overlapStart - cellStart) / 60) * 100,
+      heightPct: ((overlapEnd - overlapStart) / 60) * 100,
+    };
+  };
 
   bookings.filter(b => b.status === 'confirmed').forEach(b => {
     if (b.courtId !== courtId) return;
     if (b.date !== date) return;
-    const startH = parseInt(b.startTime.split(':')[0]);
-    const endH = parseInt(b.endTime.split(':')[0]);
-    if (hour >= startH && hour < endH) {
-      entries.push({ type: 'booking', data: b });
-    }
+    const cov = coverage(b.startTime, b.endTime);
+    if (cov) entries.push({ type: 'booking', data: b, ...cov });
   });
 
   blockedSlots.forEach(block => {
     if (block.courtId !== courtId) return;
-    let applies = false;
-    const checkDate = new Date(date);
-    if (block.isRecurring) {
-      const blockDayIndex = jsDayToIndex(block.dayOfWeek ?? new Date(block.startDate).getDay());
-      const checkDayIndex = jsDayToIndex(checkDate.getDay());
-      if (blockDayIndex === checkDayIndex) {
-        const blockStart = new Date(block.startDate);
-        const weekDiff = Math.floor((checkDate.getTime() - blockStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-        if (weekDiff >= 0) {
-          if (block.endDate) {
-            if (checkDate <= new Date(block.endDate)) applies = true;
-          } else {
-            applies = true;
-          }
-        }
-      }
-    } else {
-      applies = block.startDate === date;
-    }
-    if (!applies) return;
-    const startH = parseInt(block.startTime.split(':')[0]);
-    const endH = parseInt(block.endTime.split(':')[0]);
-    if (hour >= startH && hour < endH) {
-      entries.push({ type: 'blocked', data: block });
-    }
+    if (!blockAppliesToDate(block, date)) return;
+    const cov = coverage(block.startTime, block.endTime);
+    if (cov) entries.push({ type: 'blocked', data: block, ...cov });
   });
 
   return entries;
 }
 
 // ---- SlotCell with click handler for bookings & blocks ----
+// Entries render as absolutely-positioned segments sized to the minutes they
+// actually cover, so a half-hour booking fills only half the hour cell.
 function SlotCell({ entries, courtId, onBookingClick, onBlockClick }: { entries: CalendarEntry[]; courtId: string; onBookingClick?: (booking: BookingRecord) => void; onBlockClick?: (block: BlockedSlot) => void }) {
   const court = COURTS.find(c => c.id === courtId);
 
@@ -99,49 +96,60 @@ function SlotCell({ entries, courtId, onBookingClick, onBlockClick }: { entries:
     return <div className="h-full min-h-[52px] hover:bg-[#1a2035]/50 transition-colors" />;
   }
 
-  const entry = entries[0];
-
-  if (entry.type === 'booking') {
-    const b = entry.data as BookingRecord;
-    return (
-      <div
-        onClick={() => onBookingClick?.(b)}
-        className={`h-full min-h-[52px] ${court?.bgSoft} ${court?.borderSoft} border rounded-lg p-1.5 flex flex-col justify-center gap-0.5 cursor-pointer hover:opacity-80 hover:ring-1 hover:ring-[#818cf8]/30 transition-all`}
-      >
-        <span className={`text-[9px] font-bold ${court?.textColor} truncate`}>
-          {b.clientDetails.fullName}
-        </span>
-        <span className="text-[8px] text-[#64748b]">
-          {b.startTime}—{b.endTime} ({b.duration}h)
-        </span>
-      </div>
-    );
-  }
-
-  const block = entry.data as BlockedSlot;
   const blockColors = {
     'block-booking': { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400' },
     'closed': { bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400' },
     'maintenance': { bg: 'bg-orange-500/10', border: 'border-orange-500/20', text: 'text-orange-400' },
   };
-  const colors = blockColors[block.type];
-  const label = block.type === 'block-booking' ? 'Block' : block.type === 'closed' ? 'Closed' : 'Maint.';
 
   return (
-    <div
-      onClick={() => onBlockClick?.(block)}
-      className={`h-full min-h-[52px] ${colors.bg} ${colors.border} border rounded-lg p-1.5 flex flex-col justify-center gap-0.5 cursor-pointer hover:opacity-80 transition-opacity`}
-    >
-      <span className={`text-[9px] font-bold ${colors.text} truncate flex items-center gap-0.5`}>
-        {block.isRecurring && <Repeat className="w-2 h-2" />}
-        {label}
-      </span>
-      {block.type === 'block-booking' && block.clientName && (
-        <span className="text-[8px] text-[#64748b] truncate">{block.clientName}</span>
-      )}
-      {(block.type === 'closed' || block.type === 'maintenance') && block.reason && (
-        <span className="text-[8px] text-[#64748b] truncate">{block.reason}</span>
-      )}
+    <div className="relative h-full min-h-[52px]">
+      {entries.map((entry, i) => {
+        const style = { top: `${entry.topPct}%`, height: `${entry.heightPct}%` };
+
+        if (entry.type === 'booking') {
+          const b = entry.data as BookingRecord;
+          return (
+            <div
+              key={`b-${b.id}-${i}`}
+              onClick={() => onBookingClick?.(b)}
+              style={style}
+              className={`absolute inset-x-0 ${court?.bgSoft} ${court?.borderSoft} border rounded-lg px-1.5 flex flex-col justify-center gap-0.5 overflow-hidden cursor-pointer hover:opacity-80 hover:ring-1 hover:ring-[#818cf8]/30 transition-all`}
+            >
+              <span className={`text-[9px] font-bold ${court?.textColor} truncate`}>
+                {b.clientDetails.fullName}
+              </span>
+              <span className="text-[8px] text-[#64748b] truncate">
+                {b.startTime}—{b.endTime} ({b.duration}h)
+              </span>
+            </div>
+          );
+        }
+
+        const block = entry.data as BlockedSlot;
+        const colors = blockColors[block.type];
+        const label = block.type === 'block-booking' ? 'Block' : block.type === 'closed' ? 'Closed' : 'Maint.';
+
+        return (
+          <div
+            key={`k-${block.id}-${i}`}
+            onClick={() => onBlockClick?.(block)}
+            style={style}
+            className={`absolute inset-x-0 ${colors.bg} ${colors.border} border rounded-lg px-1.5 flex flex-col justify-center gap-0.5 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity`}
+          >
+            <span className={`text-[9px] font-bold ${colors.text} truncate flex items-center gap-0.5`}>
+              {block.isRecurring && <Repeat className="w-2 h-2" />}
+              {label}
+            </span>
+            {block.type === 'block-booking' && block.clientName && (
+              <span className="text-[8px] text-[#64748b] truncate">{block.clientName}</span>
+            )}
+            {(block.type === 'closed' || block.type === 'maintenance') && block.reason && (
+              <span className="text-[8px] text-[#64748b] truncate">{block.reason}</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -186,7 +194,7 @@ function TimeGridRows({
 // ============================================
 // MAIN COMPONENT
 // ============================================
-export function Calendar({ bookings, blockedSlots, onCancelBooking, onPlayed, onMissed }: Props) {
+export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendanceChange }: Props) {
   const [view, setView] = useState<CalendarView>('day');
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
@@ -257,11 +265,10 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onPlayed, on
 
         {selectedBooking && (
           <BookingDetailModal
-            booking={selectedBooking}
+            booking={bookings.find(b => b.id === selectedBooking.id) ?? selectedBooking}
             onClose={() => setSelectedBooking(null)}
             onCancel={onCancelBooking}
-            onPlayed={onPlayed}
-            onMissed={onMissed}
+            onAttendanceChange={onAttendanceChange}
           />
         )}
 
@@ -385,11 +392,10 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onPlayed, on
 
         {selectedBooking && (
           <BookingDetailModal
-            booking={selectedBooking}
+            booking={bookings.find(b => b.id === selectedBooking.id) ?? selectedBooking}
             onClose={() => setSelectedBooking(null)}
             onCancel={onCancelBooking}
-            onPlayed={onPlayed}
-            onMissed={onMissed}
+            onAttendanceChange={onAttendanceChange}
           />
         )}
 
@@ -547,11 +553,10 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onPlayed, on
 
       {selectedBooking && (
         <BookingDetailModal
-          booking={selectedBooking}
+          booking={bookings.find(b => b.id === selectedBooking.id) ?? selectedBooking}
           onClose={() => setSelectedBooking(null)}
           onCancel={onCancelBooking}
-          onPlayed={onPlayed}
-          onMissed={onMissed}
+          onAttendanceChange={onAttendanceChange}
         />
       )}
 
@@ -634,17 +639,25 @@ function BlockDetailModal({ block, onClose }: { block: BlockedSlot; onClose: () 
               </div>
             </div>
 
-            {/* Day */}
+            {/* Day / Schedule */}
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
                 <CalIcon className="w-5 h-5 text-[#7ED321]" />
               </div>
               <div>
-                <p className="text-[#64748b] text-xs">Day</p>
-                <p className="text-white font-semibold">
-                  {DAYS[jsDayToIndex(block.dayOfWeek ?? new Date(block.startDate).getDay())]}
-                  {block.isRecurring && <span className="text-[#64748b] text-xs ml-1">(recurring weekly)</span>}
-                </p>
+                <p className="text-[#64748b] text-xs">Schedule</p>
+                {block.exactDates && block.exactDates.length > 0 ? (
+                  <p className="text-white font-semibold">Exact dates: {block.exactDates.join(', ')}</p>
+                ) : block.isRecurring ? (
+                  <p className="text-white font-semibold">
+                    {DAYS[jsDayToIndex(block.dayOfWeek ?? new Date(block.startDate).getDay())]}s
+                    <span className="text-[#64748b] text-xs ml-1">
+                      (every {block.intervalWeeks === 1 || !block.intervalWeeks ? 'week' : `${block.intervalWeeks} weeks`})
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-white font-semibold">{block.startDate}</p>
+                )}
               </div>
             </div>
 

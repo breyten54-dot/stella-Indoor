@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  collection, onSnapshot, doc, updateDoc, deleteDoc, query, where, orderBy, writeBatch, setDoc, getDocs
+  collection, onSnapshot, doc, updateDoc, deleteDoc, query, where, orderBy, writeBatch
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { getErrorMessage } from '@/lib/error';
 import type { NotificationRecord, NotificationType } from '@/types/notification';
 
 const COLLECTION = 'notifications';
@@ -34,17 +33,33 @@ async function requestNotificationPermission(): Promise<boolean> {
   return permission === 'granted';
 }
 
+// Extended NotificationOptions for Chromium/Android-specific fields that TypeScript's
+// DOM lib omits in some build configurations.
+interface ExtendedNotificationOptions extends NotificationOptions {
+  badge?: string;
+  vibrate?: number[];
+  renotify?: boolean;
+  silent?: boolean;
+}
+
 // Show a browser notification
 function showBrowserNotification(title: string, body: string, icon: string = '/logo-original.jpg') {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
-    new Notification(title, {
+    const options: ExtendedNotificationOptions = {
       body,
       icon,
-      badge: icon,
+      // Android uses the badge as a MASK for the status-bar icon. It must be a
+      // white-on-transparent silhouette; a colour photo renders as a plain white
+      // square. badge-admin.png is a 96×96 monochrome crest silhouette.
+      badge: '/badge-admin.png',
       tag: title,
       requireInteraction: true,
-    });
+      vibrate: [300, 100, 300],
+      renotify: true,
+      silent: false,
+    };
+    new Notification(title, options);
   } catch {
     // Silent fail
   }
@@ -88,8 +103,11 @@ export function useNotifications(userEmail: string | null) {
       const unread = data.filter(n => !n.read);
       setUnreadCount(unread.length);
 
-      // Show browser notifications for new ones (not yet shown)
-      data.filter(n => !n.shown && !n.read).forEach(n => {
+      // Show browser notifications for new ones (not yet shown). Scheduled
+      // reminders (scheduledFor in the future) must NOT fire here — the
+      // 30s interval below fires them when their time arrives.
+      const now = Date.now();
+      data.filter(n => !n.shown && !n.read && (!n.scheduledFor || n.scheduledFor <= now)).forEach(n => {
         showBrowserNotification(n.title, n.message);
         // Mark as shown (best effort)
         updateDoc(doc(db, COLLECTION, n.id), { shown: true }).catch((err) => {
@@ -148,104 +166,6 @@ export function useNotifications(userEmail: string | null) {
   };
 }
 
-// ---- Create a cancellation notification (called from admin) ----
-export async function createCancellationNotification(
-  userEmail: string,
-  bookingId: string,
-  courtName: string,
-  date: string,
-  startTime: string
-): Promise<void> {
-  const id = `cancel-${bookingId}-${Date.now()}`;
-  await setDoc(doc(db, COLLECTION, id), {
-    type: 'admin-cancelled',
-    userEmail: userEmail.toLowerCase().trim(),
-    bookingId,
-    courtName,
-    date,
-    startTime,
-    title: 'Booking Cancelled',
-    message: `Your booking for ${courtName} on ${date} at ${startTime} has been cancelled by the admin.`,
-    read: false,
-    createdAt: Date.now(),
-    shown: false,
-  });
-}
-
-// ---- Schedule reminder notifications (called when booking is confirmed) ----
-export async function scheduleBookingReminders(
-  userEmail: string,
-  bookingId: string,
-  courtName: string,
-  date: string,
-  startTime: string
-): Promise<void> {
-  const emailKey = userEmail.toLowerCase().trim();
-
-  // Parse booking start time
-  const [h, m] = startTime.split(':').map(Number);
-  const bookingDate = new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
-  const bookingTimestamp = bookingDate.getTime();
-
-  // Only schedule if booking is in the future
-  if (bookingTimestamp <= Date.now()) return;
-
-  const reminders = [
-    { type: 'reminder-1h' as NotificationType, minutesBefore: 60, label: '1 hour' },
-    { type: 'reminder-30m' as NotificationType, minutesBefore: 30, label: '30 minutes' },
-    { type: 'reminder-5m' as NotificationType, minutesBefore: 5, label: '5 minutes' },
-  ];
-
-  for (const r of reminders) {
-    const scheduledFor = bookingTimestamp - r.minutesBefore * 60 * 1000;
-    // Only schedule if the reminder time is in the future
-    if (scheduledFor > Date.now()) {
-      const id = `reminder-${r.type}-${bookingId}`;
-      await setDoc(doc(db, COLLECTION, id), {
-        type: r.type,
-        userEmail: emailKey,
-        bookingId,
-        courtName,
-        date,
-        startTime,
-        title: 'Booking Reminder',
-        message: `Your booking for ${courtName} on ${date} at ${startTime} is in ${r.label}.`,
-        read: false,
-        createdAt: Date.now(),
-        scheduledFor,
-        shown: false,
-      });
-    }
-  }
-}
-
-// ---- Delete reminders for a cancelled booking ----
-export async function deleteRemindersForBooking(bookingId: string): Promise<number> {
-  console.log(`[Notifications] Deleting reminders for booking ${bookingId}`);
-  let deletedCount = 0;
-
-  // Query by bookingId field instead of hardcoded document IDs
-  try {
-    const q = query(
-      collection(db, COLLECTION),
-      where('bookingId', '==', bookingId)
-    );
-    const snapshot = await getDocs(q);
-    console.log(`[Notifications] Found ${snapshot.docs.length} reminders for ${bookingId}`);
-
-    for (const snap of snapshot.docs) {
-      try {
-        await deleteDoc(snap.ref);
-        deletedCount++;
-        console.log(`[Notifications] Deleted reminder: ${snap.id}`);
-      } catch (err: unknown) {
-        console.warn(`[Notifications] Could not delete ${snap.id}: ${getErrorMessage(err)}`);
-      }
-    }
-  } catch (err: unknown) {
-    console.error(`[Notifications] Query failed for booking ${bookingId}: ${getErrorMessage(err)}`);
-  }
-
-  console.log(`[Notifications] Deleted ${deletedCount} reminders for ${bookingId}`);
-  return deletedCount;
-}
+// Server-side Cloud Functions now own notification lifecycle creation
+// (createReminderNotifications / cleanupBookingSideEffects in functions/src/index.ts)
+// so the client only reads and manages read/shown state.

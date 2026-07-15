@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.stellaindoor.admin",
+    "sha256_cert_fingerprints": ["52:56:AC:64:39:0F:8D:CF:7E:B1:74:43:EE:CF:5C:59:02:D3:5F:5D:53:5D:4E:D6:66:03:67:4E:47:0F:73:B9"]
+  }
+}]

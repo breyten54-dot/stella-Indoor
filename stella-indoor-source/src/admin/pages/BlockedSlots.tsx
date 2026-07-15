@@ -6,7 +6,7 @@ import {
   Phone, User, FileText, Repeat, Trash2, X, Wrench,
   Calendar as CalIcon, AlertTriangle
 } from 'lucide-react';
-import type { BlockedSlot, BlockType } from '../hooks/useBlockedSlots';
+import { blockAppliesToDate, type BlockedSlot, type BlockType } from '../hooks/useBlockedSlots';
 
 interface Props {
   slots: BlockedSlot[];
@@ -38,6 +38,64 @@ function jsDayToIndex(jsDay: number): number {
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
+// Local YYYY-MM-DD (toISOString would shift the date across the UTC boundary)
+function toLocalYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Our UI weekday index (0=Mon … 6=Sun) → JS getDay() (0=Sun … 6=Sat)
+function uiIndexToJsDay(ui: number): number {
+  return ui === 6 ? 0 : ui + 1;
+}
+
+// The next calendar date matching a UI weekday — today if today already matches.
+// Used as the default for a one-off (specific future date).
+function nextDateForWeekday(ui: number): string {
+  const target = uiIndexToJsDay(ui);
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const delta = (target - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + delta);
+  return toLocalYMD(d);
+}
+
+// The most recent occurrence of a UI weekday on or before today. Recurring blocks
+// anchor here so a newly-created block is active from the CURRENT week (the
+// closest past/today occurrence), not the next one.
+function recentDateForWeekday(ui: number): string {
+  const target = uiIndexToJsDay(ui);
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const delta = (d.getDay() - target + 7) % 7;
+  d.setDate(d.getDate() - delta);
+  return toLocalYMD(d);
+}
+
+// A block should vanish from the slot-control view once its coverage is entirely
+// in the past: a recurring block after its end date, a one-off after its date.
+function isBlockExpired(block: BlockedSlot, today: string): boolean {
+  if (block.exactDates && block.exactDates.length > 0) {
+    return block.exactDates.every(dt => dt < today);
+  }
+  if (block.isRecurring) {
+    return !!block.endDate && block.endDate < today;
+  }
+  return block.startDate < today;
+}
+
+// A block's coverage of one hour cell, as percentages of the cell height —
+// lets half-hour blocks render as half-filled cells
+interface CellBlock {
+  block: BlockedSlot;
+  topPct: number;
+  heightPct: number;
+}
+
 export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: Props) {
   const [selectedCourt, setSelectedCourt] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
@@ -48,41 +106,51 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
   const [viewBlock, setViewBlock] = useState<BlockedSlot | null>(null);
   const [editBlock, setEditBlock] = useState<BlockedSlot | null>(null);
   const [editForm, setEditForm] = useState<Partial<BlockedSlot>>({});
+  const [overrideDate, setOverrideDate] = useState('');
   useBodyScrollLock(viewBlock !== null || editBlock !== null || showForm);
 
-
-
-  // Filter slots by selected court
-  const filteredSlots = useMemo(() => {
-    if (selectedCourt === 'all') return slots;
-    return slots.filter(s => s.courtId === selectedCourt);
-  }, [slots, selectedCourt]);
-
-  // Get blocks for a specific day index (0=Mon, 6=Sun) and hour
-  const getBlocksForSlot = useCallback((dayIndex: number, hour: number): BlockedSlot[] => {
-    return filteredSlots.filter(block => {
-      const blockDayIndex = jsDayToIndex(block.dayOfWeek ?? new Date(block.startDate).getDay());
-      if (blockDayIndex !== dayIndex) return false;
-
-      const blockStartHour = parseInt(block.startTime.split(':')[0]);
-      const blockEndHour = parseInt(block.endTime.split(':')[0]);
-      // Check if this hour slot overlaps with the block
-      return hour >= blockStartHour && hour < blockEndHour;
+  // Keep the open detail modal in sync with live Firestore updates
+  // (e.g. so saved overrides appear immediately without reopening)
+  useEffect(() => {
+    setViewBlock(current => {
+      if (!current) return current;
+      return slots.find(s => s.id === current.id) ?? null;
     });
-  }, [filteredSlots]);
+  }, [slots]);
 
-  const handleCellClick = (dayIndex: number, hour: number) => {
-    const existingBlocks = getBlocksForSlot(dayIndex, hour);
-    if (existingBlocks.length > 0) {
-      // Show detail for the first block at this slot
-      setViewBlock(existingBlocks[0]);
-    } else {
-      // No block here — open create form
-      setFormDay(dayIndex);
-      setFormHour(hour);
-      setShowForm(true);
+  // Today (local) — expired blocks are hidden from the whole slot-control view.
+  const todayStr = useMemo(() => toLocalYMD(new Date()), []);
+
+  // Filter slots by selected court AND drop any block whose end date has passed
+  // (req: a block set to end on the 30th disappears from slot control after the 30th).
+  const filteredSlots = useMemo(() => {
+    const active = slots.filter(s => !isBlockExpired(s, todayStr));
+    if (selectedCourt === 'all') return active;
+    return active.filter(s => s.courtId === selectedCourt);
+  }, [slots, selectedCourt, todayStr]);
+
+  // Get blocks overlapping a specific day index (0=Mon, 6=Sun) and hour,
+  // with each block's minute-accurate coverage of the hour cell
+  const getBlocksForSlot = useCallback((dayIndex: number, hour: number): CellBlock[] => {
+    const cellStart = hour * 60;
+    const cellEnd = cellStart + 60;
+    const result: CellBlock[] = [];
+    for (const block of filteredSlots) {
+      const blockDayIndex = jsDayToIndex(block.dayOfWeek ?? new Date(block.startDate).getDay());
+      if (blockDayIndex !== dayIndex) continue;
+
+      const overlapStart = Math.max(cellStart, timeToMinutes(block.startTime));
+      const overlapEnd = Math.min(cellEnd, timeToMinutes(block.endTime));
+      if (overlapEnd <= overlapStart) continue;
+
+      result.push({
+        block,
+        topPct: ((overlapStart - cellStart) / 60) * 100,
+        heightPct: ((overlapEnd - overlapStart) / 60) * 100,
+      });
     }
-  };
+    return result;
+  }, [filteredSlots]);
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
@@ -94,6 +162,8 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
     setViewBlock(null);
     setEditBlock(block);
     setEditForm({
+      courtId: block.courtId,
+      courtName: block.courtName,
       clientName: block.clientName,
       clientPhone: block.clientPhone,
       clientEmail: block.clientEmail,
@@ -102,12 +172,19 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
       startDate: block.startDate,
       endDate: block.endDate,
       reason: block.reason,
+      isRecurring: block.isRecurring,
+      intervalWeeks: block.intervalWeeks,
     });
   };
 
   const saveEdit = async () => {
     if (!editBlock) return;
-    await onUpdate(editBlock.id, editForm);
+    const update = { ...editForm };
+    const court = COURTS.find(c => c.id === update.courtId);
+    if (court) {
+      update.courtName = court.name;
+    }
+    await onUpdate(editBlock.id, update);
     setEditBlock(null);
     setEditForm({});
   };
@@ -190,46 +267,43 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
 
               {/* Day cells */}
               {DAYS_SHORT.map((_, dayIndex) => {
-                const blocks = getBlocksForSlot(dayIndex, hour);
-                const hasBlock = blocks.length > 0;
-
-                // Determine cell styling based on block type
-                let cellClass = 'bg-transparent hover:bg-[#1a2035] cursor-pointer transition-colors';
-                let content = null;
-
-                if (hasBlock) {
-                  const block = blocks[0];
-                  const config = BLOCK_TYPE_CONFIG[block.type];
-                  const court = COURTS.find(c => c.id === block.courtId);
-
-                  cellClass = `${config.bgColor} ${config.borderColor} border cursor-pointer hover:opacity-80 transition-opacity`;
-
-                  content = (
-                    <div className="p-1 text-center">
-                      <span className={`text-[9px] font-bold ${config.color} block truncate`}>
-                        {config.label}
-                      </span>
-                      {selectedCourt === 'all' && court && (
-                        <span className={`text-[8px] ${court.textColor} block truncate mt-0.5`}>
-                          {court.name}
-                        </span>
-                      )}
-                      {block.isRecurring && (
-                        <Repeat className="w-2.5 h-2.5 text-[#64748b] mx-auto mt-0.5" />
-                      )}
-                    </div>
-                  );
-                }
+                const cellBlocks = getBlocksForSlot(dayIndex, hour);
+                const hasBlock = cellBlocks.length > 0;
 
                 return (
                   <div
                     key={dayIndex}
-                    onClick={() => handleCellClick(dayIndex, hour)}
-                    className={`min-h-[52px] p-1 border-r border-[#1e293b] last:border-r-0 ${cellClass} relative cursor-pointer`}
+                    onClick={() => { setFormDay(dayIndex); setFormHour(hour); setShowForm(true); }}
+                    className="min-h-[52px] border-r border-[#1e293b] last:border-r-0 relative cursor-pointer bg-transparent hover:bg-[#1a2035] transition-colors group"
                   >
-                    {content}
+                    {cellBlocks.map(({ block, topPct, heightPct }) => {
+                      const config = BLOCK_TYPE_CONFIG[block.type];
+                      const court = COURTS.find(c => c.id === block.courtId);
+                      const compact = heightPct < 75;
+
+                      return (
+                        <div
+                          key={block.id}
+                          onClick={e => { e.stopPropagation(); setViewBlock(block); }}
+                          style={{ top: `${topPct}%`, height: `${heightPct}%` }}
+                          className={`absolute inset-x-0 ${config.bgColor} ${config.borderColor} border overflow-hidden flex flex-col items-center justify-center text-center hover:opacity-80 transition-opacity`}
+                        >
+                          <span className={`text-[9px] font-bold ${config.color} block truncate max-w-full px-0.5`}>
+                            {config.label}
+                          </span>
+                          {!compact && selectedCourt === 'all' && court && (
+                            <span className={`text-[8px] ${court.textColor} block truncate max-w-full px-0.5 mt-0.5`}>
+                              {court.name}
+                            </span>
+                          )}
+                          {!compact && block.isRecurring && (
+                            <Repeat className="w-2.5 h-2.5 text-[#64748b] mx-auto mt-0.5" />
+                          )}
+                        </div>
+                      );
+                    })}
                     {!hasBlock && (
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                         <Plus className="w-4 h-4 text-[#475569]" />
                       </div>
                     )}
@@ -257,7 +331,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
         ))}
         <div className="flex items-center gap-1.5 ml-2">
           <Repeat className="w-3 h-3 text-[#64748b]" />
-          <span className="text-[11px] text-[#64748b]">Recurring weekly</span>
+          <span className="text-[11px] text-[#64748b]">Recurring</span>
         </div>
       </div>
 
@@ -322,29 +396,23 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                 </div>
               </div>
 
-              {/* Days */}
+              {/* Schedule */}
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <Repeat className="w-5 h-5 text-[#7ED321]" />
+                  {viewBlock.isRecurring ? <Repeat className="w-5 h-5 text-[#7ED321]" /> : <CalIcon className="w-5 h-5 text-[#7ED321]" />}
                 </div>
                 <div>
-                  <p className="text-[#64748b] text-xs">Recurring Days</p>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    <span className="px-2 py-0.5 rounded-md bg-[#1B7A40]/20 text-[#7ED321] text-xs font-semibold">
-                      {DAYS[jsDayToIndex(viewBlock.dayOfWeek ?? new Date(viewBlock.startDate).getDay())]}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Date Range */}
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <CalIcon className="w-5 h-5 text-[#7ED321]" />
-                </div>
-                <div>
-                  <p className="text-[#64748b] text-xs">Date Range</p>
-                  <p className="text-white font-semibold">{viewBlock.startDate} → {viewBlock.endDate || 'Indefinite'}</p>
+                  <p className="text-[#64748b] text-xs">Schedule</p>
+                  {viewBlock.isRecurring ? (
+                    <>
+                      <p className="text-white font-semibold">
+                        Every {viewBlock.intervalWeeks === 1 || !viewBlock.intervalWeeks ? 'week' : `${viewBlock.intervalWeeks} weeks`} on {DAYS[jsDayToIndex(viewBlock.dayOfWeek ?? new Date(viewBlock.startDate).getDay())]}s
+                      </p>
+                      <p className="text-[#94a3b8] text-sm">{viewBlock.startDate} → {viewBlock.endDate || 'Indefinite'}</p>
+                    </>
+                  ) : (
+                    <p className="text-white font-semibold">{viewBlock.startDate}</p>
+                  )}
                 </div>
               </div>
 
@@ -360,6 +428,65 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                   </div>
                 </div>
               )}
+
+              {/* Per-date override */}
+              <div className="border-t border-[#1e293b] pt-4 space-y-3">
+                <p className="text-xs font-semibold text-[#64748b] uppercase tracking-wider">Override Single Date</p>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={overrideDate}
+                    onChange={e => setOverrideDate(e.target.value)}
+                    className="flex-1 h-11 px-4 rounded-xl border border-[#1e293b] bg-[#0b0f1e] text-white text-sm focus:outline-none focus:border-[#6366f1] transition-all"
+                  />
+                  {overrideDate && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!viewBlock) return;
+                        const currentlyActive = blockAppliesToDate(viewBlock, overrideDate);
+                        const nextOverrides = { ...(viewBlock.overrides || {}), [overrideDate]: !currentlyActive };
+                        await onUpdate(viewBlock.id, { overrides: nextOverrides });
+                        setOverrideDate('');
+                      }}
+                      className="h-11 px-4 rounded-xl bg-[#1e293b] hover:bg-[#334155] text-white text-xs font-bold transition-colors whitespace-nowrap"
+                    >
+                      {blockAppliesToDate(viewBlock, overrideDate) ? 'Open this date' : 'Close this date'}
+                    </button>
+                  )}
+                </div>
+                {overrideDate && (
+                  <p className="text-[10px] text-[#475569]">
+                    On {overrideDate} this block is currently <span className={blockAppliesToDate(viewBlock, overrideDate) ? 'text-amber-400' : 'text-emerald-400'}>
+                      {blockAppliesToDate(viewBlock, overrideDate) ? 'closed' : 'open'}
+                    </span>
+                  </p>
+                )}
+                {viewBlock.overrides && Object.keys(viewBlock.overrides).length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-[#64748b]">Saved overrides</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(viewBlock.overrides).map(([date, active]) => (
+                        <span key={date} className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold ${active ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                          {date}: {active ? 'closed' : 'open'}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!viewBlock) return;
+                              const nextOverrides = { ...viewBlock.overrides };
+                              delete nextOverrides[date];
+                              await onUpdate(viewBlock.id, { overrides: Object.keys(nextOverrides).length > 0 ? nextOverrides : {} });
+                            }}
+                            className="hover:text-white"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Actions */}
@@ -434,6 +561,18 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                 />
               </div>
 
+              {/* Court */}
+              <div>
+                <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Court</label>
+                <select
+                  value={editForm.courtId || ''}
+                  onChange={e => setEditForm({ ...editForm, courtId: e.target.value })}
+                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors appearance-none"
+                >
+                  {COURTS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+
               {/* Time Range */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -456,10 +595,44 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                 </div>
               </div>
 
-              {/* Date Range */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Schedule — recurring picks a weekday (anchor date auto-derived);
+                  one-off picks the specific date. No redundant "first date" step. */}
+              {editForm.isRecurring ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Day of Week</label>
+                    <div className="grid grid-cols-7 gap-1">
+                      {DAYS_SHORT.map((day, i) => {
+                        const currentIdx = editForm.startDate ? jsDayToIndex(new Date(editForm.startDate + 'T00:00:00').getDay()) : 0;
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => setEditForm({ ...editForm, startDate: recentDateForWeekday(i) })}
+                            className={`h-10 rounded-lg text-xs font-bold transition-all
+                              ${currentIdx === i ? 'bg-[#6366f1] text-white' : 'bg-[#0b0f1e] border border-[#1e293b] text-[#64748b] hover:border-[#334155]'}`}
+                          >
+                            {day}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">
+                      End Date <span className="text-[#475569] normal-case">(optional — blank = indefinite)</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={editForm.endDate || ''}
+                      onChange={e => setEditForm({ ...editForm, endDate: e.target.value || null })}
+                      className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors"
+                    />
+                  </div>
+                </>
+              ) : (
                 <div>
-                  <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Start Date</label>
+                  <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Date</label>
                   <input
                     type="date"
                     value={editForm.startDate || ''}
@@ -467,16 +640,23 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                     className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors"
                   />
                 </div>
+              )}
+
+              {/* Recurrence interval */}
+              {editForm.isRecurring && (
                 <div>
-                  <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">End Date</label>
-                  <input
-                    type="date"
-                    value={editForm.endDate || ''}
-                    onChange={e => setEditForm({ ...editForm, endDate: e.target.value })}
-                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors"
-                  />
+                  <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Repeat every</label>
+                  <select
+                    value={editForm.intervalWeeks || 1}
+                    onChange={e => setEditForm({ ...editForm, intervalWeeks: parseInt(e.target.value) })}
+                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors appearance-none"
+                  >
+                    {Array.from({ length: 8 }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>{n} week{n === 1 ? '' : 's'}</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
+              )}
 
               {/* Notes */}
               <div>
@@ -543,7 +723,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                     </span>
                     {block.isRecurring && (
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#6366f1]/10 text-[#818cf8] flex items-center gap-0.5">
-                        <Repeat className="w-2.5 h-2.5" /> Weekly
+                        <Repeat className="w-2.5 h-2.5" /> Every {(block.intervalWeeks || 1) === 1 ? 'week' : `${block.intervalWeeks || 1} weeks`}
                       </span>
                     )}
                   </div>
@@ -575,7 +755,14 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                     )}
                   </div>
 
-                  <div className="pt-1 flex justify-end">
+                  <div className="pt-1 flex justify-end gap-2">
+                    <button
+                      onClick={() => startEdit(block)}
+                      className="h-7 px-3 rounded-lg bg-[#1B7A40]/10 text-[#7ED321] hover:bg-[#1B7A40]/20 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      Edit
+                    </button>
                     <button
                       onClick={() => handleDelete(block.id)}
                       disabled={deletingId === block.id}
@@ -627,7 +814,10 @@ function CreateBlockModal({
   const [startTime, setStartTime] = useState(`${initialHour.toString().padStart(2, '0')}:00`);
   const [endTime, setEndTime] = useState(`${(initialHour + 1).toString().padStart(2, '0')}:00`);
   const [isRecurring, setIsRecurring] = useState(true);
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [intervalWeeks, setIntervalWeeks] = useState(1);
+  // Recurring blocks anchor to the next occurrence of the chosen weekday (no
+  // manual "first date" step). One-off blocks target a specific calendar date.
+  const [oneOffDate, setOneOffDate] = useState(() => nextDateForWeekday(initialDay));
   const [endDate, setEndDate] = useState('');
 
   // Client info (for block bookings)
@@ -654,7 +844,7 @@ function CreateBlockModal({
     const startM = parseInt(startTime.split(':')[0]) * 60 + parseInt(startTime.split(':')[1]);
     const endM = parseInt(endTime.split(':')[0]) * 60 + parseInt(endTime.split(':')[1]);
     if (endM <= startM) e.endTime = 'End time must be after start time';
-    if (!startDate) e.startDate = 'Select a start date';
+    if (!isRecurring && !oneOffDate) e.oneOffDate = 'Select a date';
     if (type === 'block-booking' && !clientName.trim()) e.clientName = 'Client name is required';
     if ((type === 'closed' || type === 'maintenance') && !reason.trim()) e.reason = 'Reason is required';
     setErrors(e);
@@ -669,12 +859,18 @@ function CreateBlockModal({
 
     const court = COURTS.find(c => c.id === courtId)!;
 
+    // Recurring → anchor to the closest past/today occurrence of the selected
+    // weekday, so the block is active from the current week onward.
+    // One-off → the specific date the admin picked. The hook derives dayOfWeek
+    // from this, so the weekday is always consistent with the stored date.
+    const startDate = isRecurring ? recentDateForWeekday(dayOfWeek) : oneOffDate;
+
     try {
       await onCreate({
         courtId,
         courtName: court.name,
         startDate,
-        endDate: endDate || null,
+        endDate: isRecurring ? (endDate || null) : null,
         startTime,
         endTime,
         type,
@@ -682,6 +878,7 @@ function CreateBlockModal({
         clientPhone: type === 'block-booking' ? (clientPhone.trim() || null) : null,
         reason: type !== 'block-booking' ? reason.trim() : null,
         isRecurring,
+        intervalWeeks: isRecurring ? intervalWeeks : 1,
         createdBy: 'admin',
       });
       onClose();
@@ -743,23 +940,61 @@ function CreateBlockModal({
             </select>
           </div>
 
-          {/* Day of Week */}
-          <div>
-            <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Day of Week</label>
-            <div className="grid grid-cols-7 gap-1">
-              {DAYS_SHORT.map((day, i) => (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => setDayOfWeek(i)}
-                  className={`h-10 rounded-lg text-xs font-bold transition-all
-                    ${dayOfWeek === i ? 'bg-[#6366f1] text-white' : 'bg-[#0b0f1e] border border-[#1e293b] text-[#64748b] hover:border-[#334155]'}`}
-                >
-                  {day}
-                </button>
-              ))}
+          {/* Recurring toggle — weekly slot vs a one-off single date */}
+          <div className="flex items-center justify-between py-2 border-t border-[#1e293b]">
+            <div className="flex items-center gap-2">
+              <Repeat className="w-4 h-4 text-[#818cf8]" />
+              <div>
+                <span className="text-sm text-[#cbd5e1]">{isRecurring ? `Repeat on ${DAYS[dayOfWeek]}s` : 'One-off date'}</span>
+                <p className="text-[10px] text-[#475569]">{isRecurring ? 'Blocks this weekday — choose how often below' : 'Blocks a single specific date'}</p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setIsRecurring(!isRecurring)}
+              className={`w-11 h-6 rounded-full transition-colors relative ${isRecurring ? 'bg-[#6366f1]' : 'bg-[#1e293b]'}`}
+            >
+              <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${isRecurring ? 'left-6' : 'left-1'}`} />
+            </button>
           </div>
+
+          {/* Day of week (recurring) — picking a day locks it in; no separate "first date" step.
+              One-off — a single date picker (its weekday is derived automatically). */}
+          {isRecurring ? (
+            <div>
+              <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Day of Week</label>
+              <div className="grid grid-cols-7 gap-1">
+                {DAYS_SHORT.map((day, i) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setDayOfWeek(i)}
+                    className={`h-10 rounded-lg text-xs font-bold transition-all
+                      ${dayOfWeek === i ? 'bg-[#6366f1] text-white' : 'bg-[#0b0f1e] border border-[#1e293b] text-[#64748b] hover:border-[#334155]'}`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#475569] mt-1">Blocks every {DAYS[dayOfWeek]} from this week onward.</p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Date</label>
+              <input
+                type="date"
+                value={oneOffDate}
+                min={toLocalYMD(new Date())}
+                onChange={e => {
+                  setOneOffDate(e.target.value);
+                  if (e.target.value) setDayOfWeek(jsDayToIndex(new Date(e.target.value + 'T00:00:00').getDay()));
+                }}
+                className={inputClass}
+              />
+              {errors.oneOffDate && <p className="text-xs text-red-400 mt-1">{errors.oneOffDate}</p>}
+              <p className="text-[10px] text-[#475569] mt-1">The single date this block applies to.</p>
+            </div>
+          )}
 
           {/* Time */}
           <div className="grid grid-cols-2 gap-3">
@@ -774,34 +1009,24 @@ function CreateBlockModal({
             </div>
           </div>
 
-          {/* First Applicable Date */}
-          <div>
-            <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">
-              First {DAYS[dayOfWeek]} Date
-            </label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={inputClass} />
-            <p className="text-[10px] text-[#475569] mt-1">
-              The first {DAYS[dayOfWeek]} this block applies to
-            </p>
-          </div>
-
-          {/* Recurring toggle */}
-          <div className="flex items-center justify-between py-2 border-t border-[#1e293b]">
-            <div className="flex items-center gap-2">
-              <Repeat className="w-4 h-4 text-[#818cf8]" />
-              <div>
-                <span className="text-sm text-[#cbd5e1]">Repeat every {DAYS[dayOfWeek]}</span>
-                <p className="text-[10px] text-[#475569]">Block applies weekly on this day</p>
-              </div>
+          {/* Repeat interval (only if recurring) */}
+          {isRecurring && (
+            <div>
+              <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Repeat every</label>
+              <select
+                value={intervalWeeks}
+                onChange={e => setIntervalWeeks(parseInt(e.target.value))}
+                className={selectClass}
+              >
+                {Array.from({ length: 8 }, (_, i) => i + 1).map(n => (
+                  <option key={n} value={n}>{n} week{n === 1 ? '' : 's'}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-[#475569] mt-1">
+                Choose 2 weeks for a team that plays every second {DAYS[dayOfWeek]}
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsRecurring(!isRecurring)}
-              className={`w-11 h-6 rounded-full transition-colors relative ${isRecurring ? 'bg-[#6366f1]' : 'bg-[#1e293b]'}`}
-            >
-              <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${isRecurring ? 'left-6' : 'left-1'}`} />
-            </button>
-          </div>
+          )}
 
           {/* End Date (only if recurring) */}
           {isRecurring && (
@@ -809,7 +1034,7 @@ function CreateBlockModal({
               <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">
                 End Date <span className="text-[#475569] normal-case">(optional — leave blank for indefinite)</span>
               </label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={startDate} className={inputClass} />
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={toLocalYMD(new Date())} className={inputClass} />
               {!endDate && (
                 <div className="flex items-center gap-1.5 mt-1.5">
                   <AlertTriangle className="w-3 h-3 text-amber-400" />

@@ -53,7 +53,8 @@ export async function subscribeToPush(): Promise<PushResult> {
       return { success: false, error: `SW failed: ${err instanceof Error ? err.message : 'unknown'}`, step: 'sw' };
     }
 
-    // Unsubscribe from an existing push subscription if it was created with a different VAPID key
+    // Always unsubscribe from any existing push subscription first so we get a
+    // fresh endpoint/keys. This fixes stale subscriptions that can return 403.
     try {
       const existing = await registration.pushManager.getSubscription();
       if (existing) {
@@ -62,7 +63,12 @@ export async function subscribeToPush(): Promise<PushResult> {
           const existingKeyB64 = uint8ArrayToBase64Url(new Uint8Array(existingKey as ArrayBuffer));
           if (existingKeyB64 !== VAPID_PUBLIC_KEY) {
             await existing.unsubscribe();
+          } else {
+            // Even if the key matches, force a fresh subscription to clear Samsung/Chrome staleness
+            await existing.unsubscribe();
           }
+        } else {
+          await existing.unsubscribe();
         }
       }
     } catch {

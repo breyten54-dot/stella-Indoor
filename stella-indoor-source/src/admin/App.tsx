@@ -5,13 +5,10 @@ import { useAdminBookings } from './hooks/useAdminBookings';
 import { useAdminClients } from './hooks/useAdminClients';
 import { useBlockedSlots } from './hooks/useBlockedSlots';
 import { cancelBooking } from '@/hooks/useFirestoreBookings';
-import { createCancellationNotification, deleteRemindersForBooking } from '@/hooks/useNotifications';
-import { sendCancellationEmail, cancelScheduledEmailsForBooking } from '@/lib/emailService';
 import { getErrorMessage } from '@/lib/error';
-import { useScheduledEmails } from '@/hooks/useScheduledEmails';
-import { markBookingPlayed, markBookingMissed } from '@/hooks/useFirestoreUsers';
+import { adjustAttendanceCounters } from '@/hooks/useFirestoreUsers';
 import { db } from '@/lib/firebase';
-import type { BookingRecord } from '@/types/booking';
+import type { BookingRecord, BookingAttendance } from '@/types/booking';
 import { AdminLogin } from './components/AdminLogin';
 import { AdminLayout } from './components/AdminLayout';
 import { ClipRecorder } from './components/ClipRecorder';
@@ -22,10 +19,12 @@ import { BlockedSlots } from './pages/BlockedSlots';
 import { Settings } from './pages/Settings';
 import { Toast } from './components/Toast';
 import { ServiceWorkerUpdater } from '@/components/ServiceWorkerUpdater';
+import { PushNotificationBanner } from './components/PushNotificationBanner';
 
 export default function App() {
-  // Start the background email poller — ensures emails are sent while admin is logged in
-  useScheduledEmails();
+  // Reminder emails are now sent server-side by the sendDueReminderEmails
+  // scheduled Cloud Function (every 5 min) — the old in-app poller was
+  // removed to prevent double-sends.
 
   // Auto-detect and prompt for service worker updates
   const updater = <ServiceWorkerUpdater swPath="/sw-admin.js" />;
@@ -52,62 +51,46 @@ export default function App() {
   } = useBlockedSlots();
 
   const handleCancelBooking = async (booking: import('@/types/booking').BookingRecord) => {
-    await cancelBooking(booking.id);
-    // Notify the client their booking was cancelled
-    await createCancellationNotification(
-      booking.userEmail,
-      booking.id,
-      booking.courtName,
-      booking.date,
-      booking.startTime
-    );
-    // Send cancellation email to the client via configured email function
     try {
-      const emailResult = await sendCancellationEmail({
-        toEmail: booking.userEmail,
-        clientName: booking.clientDetails.fullName,
-        bookingRef: booking.id,
-        courtName: booking.courtName,
-        date: booking.date,
-        startTime: booking.startTime,
-        endTime: booking.endTime,
-        duration: booking.duration,
-        totalPrice: booking.totalPrice,
-      });
-      if (emailResult.success) {
-        showToast(`Cancellation email sent to ${booking.userEmail}`, 'success');
+      // Server-side Cloud Function handles the client email, in-app notification,
+      // reminder cleanup, and admin push (for client cancellations).
+      await cancelBooking(booking.id, 'admin');
+      showToast('Booking cancelled — client will be notified', 'success');
+    } catch (err: unknown) {
+      showToast(`Cancel failed: ${getErrorMessage(err)}`, 'error');
+    }
+  };
+
+  // Change a booking's attendance status and keep user counters/ban state in sync
+  const handleAttendanceChange = async (booking: BookingRecord, newAttendance: BookingAttendance) => {
+    const previous = booking.attendance || 'pending';
+    if (previous === newAttendance) return;
+
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'bookings', booking.id), { attendance: newAttendance });
+      const result = await adjustAttendanceCounters(
+        booking.userEmail,
+        previous,
+        newAttendance,
+        {
+          name: booking.clientDetails.fullName,
+          phone: booking.clientDetails.phone || '',
+        }
+      );
+
+      if (newAttendance === 'missed' && result.banned) {
+        showToast(`Client banned after ${result.missedCount} missed bookings`, 'error');
+      } else if (newAttendance === 'missed') {
+        showToast(`Marked as missed (${result.missedCount}/3)`, 'error');
+      } else if (newAttendance === 'played') {
+        showToast('Marked as played', 'success');
       } else {
-        showToast(`Email failed: ${emailResult.error || 'Unknown error'}`, 'error');
+        showToast('Attendance reset to pending', 'success');
       }
     } catch (err: unknown) {
-      showToast(`Email error: ${getErrorMessage(err) || 'Failed to send'}`, 'error');
+      showToast(`Failed to update attendance: ${getErrorMessage(err)}`, 'error');
     }
-
-    // Remove any scheduled reminders for this booking
-    await deleteRemindersForBooking(booking.id);
-    // Cancel all pending scheduled emails (confirmation + reminders)
-    await cancelScheduledEmailsForBooking(booking.id);
-  };
-
-  // Mark booking as attended (Played)
-  const handlePlayed = async (booking: BookingRecord) => {
-    const { doc, updateDoc } = await import('firebase/firestore');
-    await updateDoc(doc(db, 'bookings', booking.id), { attendance: 'played' });
-    await markBookingPlayed(booking.userEmail);
-    showToast('Marked as played', 'success');
-  };
-
-  // Mark booking as missed — 3 strikes = permanent ban
-  const handleMissed = async (booking: BookingRecord) => {
-    const { doc, updateDoc } = await import('firebase/firestore');
-    await updateDoc(doc(db, 'bookings', booking.id), { attendance: 'missed' });
-    const result = await markBookingMissed(booking.userEmail);
-    if (result.banned) {
-      showToast(`Client banned after ${result.missedCount} missed bookings`, 'error');
-    } else {
-      showToast(`Marked as missed (${result.missedCount}/3)`, 'error');
-    }
-    return result;
   };
 
   if (authLoading) {
@@ -123,6 +106,7 @@ export default function App() {
   }
 
   return (<>
+    <PushNotificationBanner />
     <AdminLayout
       user={user}
       onLogout={logout}
@@ -134,8 +118,8 @@ export default function App() {
       onClearNotifications={clearNotifications}
     >
       <Routes>
-        <Route path="/" element={<Dashboard bookings={bookings} stats={stats} dailyStats={dailyStats} courtStats={courtStats} />} />
-        <Route path="/calendar" element={<Calendar bookings={bookings} blockedSlots={blockedSlots} onCancelBooking={handleCancelBooking} onPlayed={handlePlayed} onMissed={handleMissed} />} />
+        <Route path="/" element={<Dashboard bookings={bookings} stats={stats} dailyStats={dailyStats} courtStats={courtStats} onAttendanceChange={handleAttendanceChange} />} />
+        <Route path="/calendar" element={<Calendar bookings={bookings} blockedSlots={blockedSlots} onCancelBooking={handleCancelBooking} onAttendanceChange={handleAttendanceChange} />} />
         <Route path="/clients" element={<Clients clients={clients} bookings={bookings} loading={clientsLoading} />} />
         <Route path="/blocked-slots" element={
           <BlockedSlots

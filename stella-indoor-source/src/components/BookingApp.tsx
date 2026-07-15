@@ -3,11 +3,12 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Check, MailCheck, MailWarning } from 'lucide-react';
 import { useBooking } from '@/hooks/useBooking';
 import { createConfirmedBooking } from '@/hooks/useFirestoreBookings';
-import { useNotifications, scheduleBookingReminders } from '@/hooks/useNotifications';
+import { useNotifications } from '@/hooks/useNotifications';
 import { getErrorMessage } from '@/lib/error';
-import { sendBookingConfirmationEmail, scheduleReminderEmails } from '@/lib/emailService';
+import { sendBookingConfirmationEmail } from '@/lib/emailService';
 
 import { LoginPage } from '@/components/LoginPage';
+import { JoinBooking } from '@/components/JoinBooking';
 import { Navbar } from '@/components/Navbar';
 import { StepIndicator } from '@/components/StepIndicator';
 import { CourtSelection } from '@/components/CourtSelection';
@@ -16,12 +17,14 @@ import { AddonSelection } from '@/components/AddonSelection';
 import { BookingConfirmation } from '@/components/BookingConfirmation';
 import { BookingSummary } from '@/components/BookingSummary';
 import { MyBookings } from '@/components/MyBookings';
-import { StellaClips } from '@/components/StellaClips';
+import { StellaClips, type SharedClipSlot } from '@/components/StellaClips';
 import { Footer } from '@/components/Footer';
+import { TermsModal } from '@/components/TermsAndConditions';
 import { HomePage } from '@/components/HomePage';
 import { useBackButton, pushWizardStep } from '@/hooks/useBackButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile } from '@/hooks/useFirestoreUsers';
+import { DEMO_MODE } from '@/lib/demo';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([
@@ -38,6 +41,23 @@ const slideVariants = {
   exitBackward: { x: '100%', opacity: 0 },
 };
 
+function parseSharedClipSlot(): SharedClipSlot | null {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('shareClips') !== '1') return null;
+  const date = params.get('date');
+  const startTime = params.get('start');
+  const endTime = params.get('end');
+  const cameraParam = params.get('camera');
+  const camera = cameraParam === 'cam1' || cameraParam === 'cam2' ? cameraParam : undefined;
+  if (!date || !startTime || !endTime) return null;
+  return { date, startTime, endTime, camera };
+}
+
+function parseJoinToken(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('join');
+}
+
 export function BookingApp() {
   const { user: firebaseUser, loading: authLoading } = useAuth();
 
@@ -50,8 +70,16 @@ export function BookingApp() {
     getTotalPrice, canProceed,
   } = useBooking();
 
+  const [sharedClipSlot, setSharedClipSlot] = useState<SharedClipSlot | null>(parseSharedClipSlot);
+  const [joinToken, setJoinToken] = useState<string | null>(parseJoinToken);
+
   // Sync the local booking auth state with Firebase Auth.
   useEffect(() => {
+    if (DEMO_MODE) {
+      // Demo preview build: browse as a fake visitor without real auth
+      if (!auth.isLoggedIn) login('demo@stellaindoor.example', 'Demo Visitor', '000 000 0000');
+      return;
+    }
     if (authLoading) return;
 
     if (firebaseUser && !auth.isLoggedIn) {
@@ -64,11 +92,20 @@ export function BookingApp() {
     }
   }, [firebaseUser, authLoading, auth.isLoggedIn, login, logout]);
 
+  // Open shared clips view automatically after login.
+  useEffect(() => {
+    if (auth.isLoggedIn && sharedClipSlot && !showHighlights) {
+      setShowHighlights(true);
+    }
+  }, [auth.isLoggedIn, sharedClipSlot, showHighlights, setShowHighlights]);
+
   const [selectedDuration, setSelectedDurationState] = useState<1 | 1.5 | 2>(1);
   const [bookingRef, setBookingRef] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [emailToast, setEmailToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [showHomePage, setShowHomePage] = useState(true);
+  // Terms acknowledgment gate — shown before every booking confirmation
+  const [showTermsAck, setShowTermsAck] = useState(false);
 
   const {
     notifications,
@@ -98,7 +135,7 @@ export function BookingApp() {
   const totalPrice = getTotalPrice();
 
   // Show a loading state while Firebase Auth initializes or while we're syncing the profile.
-  if (authLoading || (firebaseUser && !auth.isLoggedIn)) {
+  if (!DEMO_MODE && (authLoading || (firebaseUser && !auth.isLoggedIn))) {
     return (
       <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-[#1B7A40]/30 border-t-[#1B7A40] rounded-full animate-spin" />
@@ -120,16 +157,51 @@ export function BookingApp() {
     pushWizardStep(5);
   };
 
+  if (joinToken) {
+    if (!auth.isLoggedIn) {
+      return <LoginPage onLogin={login} contextMessage="Sign in or create an account to join this booking." />;
+    }
+    return (
+      <JoinBooking
+        token={joinToken}
+        userEmail={auth.user!.email}
+        onJoined={() => {
+          setJoinToken(null);
+          window.history.replaceState({}, '', window.location.pathname + '#/');
+          setShowHomePage(true);
+        }}
+      />
+    );
+  }
+
   if (auth.isLoggedIn && showMyBookings) {
     return <MyBookings userEmail={auth.user!.email} onClose={() => setShowMyBookings(false)} />;
   }
 
   if (auth.isLoggedIn && showHighlights) {
-    return <StellaClips userEmail={auth.user!.email} onClose={() => setShowHighlights(false)} />;
+    return (
+      <StellaClips
+        userEmail={auth.user!.email}
+        sharedSlot={sharedClipSlot || undefined}
+        onClose={() => {
+          setShowHighlights(false);
+          setSharedClipSlot(null);
+          // Clean up share params from URL so a refresh doesn't reopen clips
+          if (window.location.search.includes('shareClips=')) {
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        }}
+      />
+    );
   }
 
   if (!auth.isLoggedIn) {
-    return <LoginPage onLogin={login} />;
+    return (
+      <LoginPage
+        onLogin={login}
+        contextMessage={sharedClipSlot ? 'Sign in or create an account to view shared Stella Clips.' : undefined}
+      />
+    );
   }
 
   // Show home page after login (before booking wizard)
@@ -169,6 +241,11 @@ export function BookingApp() {
   };
 
   const handleConfirmBooking = async () => {
+    if (DEMO_MODE) {
+      setEmailToast({ msg: 'This is a demo preview — booking creation is disabled.', ok: false });
+      setTimeout(() => setEmailToast(null), 6000);
+      return;
+    }
     if (!state.court || !state.dateTime || !auth.user) return;
     const user = auth.user;
     setConfirming(true);
@@ -211,15 +288,6 @@ export function BookingApp() {
       setBookingRef(booking.id);
       completeBooking();
 
-      // Schedule in-app browser reminder notifications (1h, 30m, 5m before) — best effort, background
-      scheduleBookingReminders(
-        user.email,
-        booking.id,
-        state.court.name,
-        state.dateTime.date,
-        state.dateTime.time
-      ).catch((err) => console.warn('In-app reminder scheduling failed:', err));
-
       // Send confirmation email immediately (receipt + proof of booking) — best effort, background
       sendBookingConfirmationEmail({
         toEmail: user.email,
@@ -250,22 +318,6 @@ export function BookingApp() {
           setTimeout(() => setEmailToast(null), 8000);
         });
 
-      // Schedule 3 reminder emails (1h, 30m, at-time) via Firestore for background delivery — best effort, background
-      scheduleReminderEmails({
-        userEmail: user.email,
-        clientName: details.fullName,
-        bookingId: booking.id,
-        courtName: state.court.name,
-        date: state.dateTime.date,
-        startTime: state.dateTime.time,
-        endTime,
-        duration: state.dateTime.duration,
-        totalPrice,
-        clientPhone: details.phone,
-        soccerBall: state.addons.soccerBall,
-        bibs: state.addons.bibs,
-        teamName: details.teamName,
-      }).catch((err) => console.warn('Reminder email scheduling failed:', err));
     } catch (err: unknown) {
       console.error('Booking confirmation failed:', err);
       setEmailToast({ msg: `Booking failed: ${getErrorMessage(err)}`, ok: false });
@@ -385,7 +437,7 @@ export function BookingApp() {
                 Continue <ChevronRight className="w-5 h-5" />
               </motion.button>
             ) : (
-              <motion.button whileTap={canProceed() ? { scale: 0.98 } : {}} onClick={handleConfirmAndComplete} disabled={!canProceed() || confirming}
+              <motion.button whileTap={canProceed() ? { scale: 0.98 } : {}} onClick={() => setShowTermsAck(true)} disabled={!canProceed() || confirming}
                 className={`flex-1 sm:flex-none sm:min-w-[240px] h-14 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all duration-200
                   ${canProceed() && !confirming ? 'bg-[#1B7A40] hover:bg-[#145C32] text-white shadow-lg shadow-[#1B7A40]/20 active:shadow-md' : 'bg-[#E0E0D8] text-[#8A8A8A] cursor-not-allowed'}`}>
                 {confirming ? (
@@ -428,6 +480,34 @@ export function BookingApp() {
       </AnimatePresence>
 
       <Footer />
+
+      {/* Terms acknowledgment — required before every booking is confirmed */}
+      {showTermsAck && (
+        <TermsModal
+          onClose={() => setShowTermsAck(false)}
+          footer={
+            <div className="space-y-2">
+              <p className="text-[11px] text-center text-[#8A8A8A]">
+                Please read and accept the terms above to confirm your booking.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowTermsAck(false)}
+                  className="flex-1 h-12 bg-[#2A2A2A] hover:bg-[#3A3A3A] text-[#B0B0B0] hover:text-white rounded-xl font-bold text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { setShowTermsAck(false); handleConfirmAndComplete(); }}
+                  className="flex-[2] h-12 bg-[#1B7A40] hover:bg-[#145C32] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Check className="w-4 h-4" /> I Agree — Confirm Booking
+                </button>
+              </div>
+            </div>
+          }
+        />
+      )}
 
       <AnimatePresence>
         {currentStep === 5 && (

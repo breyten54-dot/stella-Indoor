@@ -1,5 +1,6 @@
-const CACHE_NAME = 'stella-admin-v1';
-const PRECACHE = ['/', '/index.html', '/manifest-admin.json', '/logo-admin.png'];
+const CACHE_NAME = 'stella-admin-v4';
+const SW_VERSION = 'v4'; // Parsed by the admin diagnostics panel
+const PRECACHE = ['/', '/index.html', '/manifest-admin.json', '/logo-admin.png', '/badge-admin.png'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -71,9 +72,30 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: payload.icon || '/logo-admin.png',
-      badge: payload.badge || '/logo-admin.png',
+      // Android uses the badge as a MASK for the status-bar icon — it must be
+      // a monochrome (white-on-transparent) image or it renders as a plain
+      // white square. badge-admin.png is the crest silhouette at 96x96.
+      badge: payload.badge || '/badge-admin.png',
       tag: payload.tag || 'stella-indoor',
       data: { url: payload.url },
+      // Heads-up ("drop-down") presentation. On Android, a vibration pattern
+      // is what promotes a web notification to the peeking banner; renotify
+      // re-alerts when a same-tag notification is replaced instead of
+      // updating silently; requireInteraction keeps it on screen until the
+      // admin acts on it. iOS ignores these flags and shows its standard
+      // slide-down banner (its default) — nothing further is controllable
+      // from web code there.
+      vibrate: [300, 100, 300],
+      renotify: true,
+      // `requireInteraction` keeps real alerts on screen until the admin acts.
+      // It can be overridden by the payload (e.g. test pushes set it to false so
+      // we can isolate whether it suppresses the heads-up banner on Samsung).
+      requireInteraction: payload.requireInteraction !== 'false',
+      timestamp: Date.now(),
+      silent: false,
+      // One actionable button so the notification looks like a real native
+      // alert and opens the admin calendar on tap.
+      actions: payload.actions || [{ action: 'open', title: 'Open' }],
     })
   );
 });
@@ -88,5 +110,31 @@ self.addEventListener('notificationclick', (event) => {
       }
       if (self.clients.openWindow) return self.clients.openWindow(url);
     })
+  );
+});
+
+// Handle browser-managed subscription rotation so dormant devices stay reachable
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const oldSubscription = event.oldSubscription ? event.oldSubscription.toJSON() : null;
+        const newSubscription = event.newSubscription ? event.newSubscription.toJSON() : null;
+        if (!oldSubscription || !newSubscription) return;
+
+        await fetch(`${self.location.origin}/updatePushSubscription`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            oldEndpoint: oldSubscription.endpoint,
+            newEndpoint: newSubscription.endpoint,
+            keys: newSubscription.keys,
+            deviceInfo: self.navigator?.userAgent || 'Unknown',
+          }),
+        });
+      } catch (err) {
+        console.error('[SW] pushsubscriptionchange failed:', err);
+      }
+    })()
   );
 });

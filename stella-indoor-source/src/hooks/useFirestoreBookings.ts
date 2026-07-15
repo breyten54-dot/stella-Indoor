@@ -11,8 +11,8 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
-import type { BookingRecord, DurationOption, ClientDetails, Addons } from '@/types/booking';
-import type { BlockedSlot } from '@/admin/hooks/useBlockedSlots';
+import type { BookingRecord, DurationOption, ClientDetails, Addons, CancellationSource } from '@/types/booking';
+import { blockAppliesToDate, type BlockedSlot } from '@/admin/hooks/useBlockedSlots';
 
 const BLOCKED_SLOTS_COLLECTION = 'blockedSlots';
 
@@ -20,6 +20,14 @@ const BOOKINGS_COLLECTION = 'bookings';
 
 const CREATE_BOOKING_URL = import.meta.env.VITE_CREATE_BOOKING_FUNCTION_URL
   || 'https://europe-west1-stella-indoor.cloudfunctions.net/createBooking';
+
+const GENERATE_INVITE_URL = import.meta.env.VITE_GENERATE_BOOKING_INVITE_FUNCTION_URL
+  || 'https://europe-west1-stella-indoor.cloudfunctions.net/generateBookingInvite';
+
+const JOIN_BOOKING_URL = import.meta.env.VITE_JOIN_BOOKING_INVITE_FUNCTION_URL
+  || 'https://europe-west1-stella-indoor.cloudfunctions.net/joinBookingByInvite';
+
+const BOOKING_INVITES_COLLECTION = 'bookingInvites';
 
 // ---- Create a confirmed booking (cash payment) ----
 export async function createConfirmedBooking(data: {
@@ -76,9 +84,14 @@ export async function createConfirmedBooking(data: {
 }
 
 // ---- Cancel a booking ----
-export async function cancelBooking(id: string): Promise<void> {
+// cancelledBy drives the server-side notification fan-out (functions/src/index.ts
+// onBookingCancelled): 'admin' -> client gets in-app notice + email, no admin echo;
+// 'client' -> admins get push, client gets confirmation email.
+export async function cancelBooking(id: string, cancelledBy: 'client' | 'admin'): Promise<void> {
   await updateDoc(doc(db, BOOKINGS_COLLECTION, id), {
     status: 'cancelled',
+    cancelledBy,
+    cancelledAt: Date.now(),
   });
 }
 
@@ -130,13 +143,38 @@ export function subscribeToBookings(callback: (bookings: BookingRecord[]) => voi
 }
 
 export function subscribeToUserBookings(email: string, callback: (bookings: BookingRecord[]) => void) {
-  const q = query(collection(db, BOOKINGS_COLLECTION), where('userEmail', '==', email));
-  return onSnapshot(q, (snapshot) => {
-    const bookings = snapshot.docs.map(docFromSnapshot);
-    callback(bookings);
+  const lowerEmail = email.toLowerCase();
+  const qOwner = query(collection(db, BOOKINGS_COLLECTION), where('userEmail', '==', lowerEmail));
+  const qMember = query(collection(db, BOOKINGS_COLLECTION), where('members', 'array-contains', lowerEmail));
+
+  let ownerBookings: BookingRecord[] = [];
+  let memberBookings: BookingRecord[] = [];
+
+  const merge = () => {
+    const map = new Map<string, BookingRecord>();
+    ownerBookings.forEach(b => map.set(b.id, b));
+    memberBookings.forEach(b => map.set(b.id, b));
+    callback(Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt));
+  };
+
+  const unsubscribeOwner = onSnapshot(qOwner, (snapshot) => {
+    ownerBookings = snapshot.docs.map(docFromSnapshot);
+    merge();
   }, (err) => {
-    console.warn('[subscribeToUserBookings] snapshot error:', err);
+    console.warn('[subscribeToUserBookings] owner snapshot error:', err);
   });
+
+  const unsubscribeMember = onSnapshot(qMember, (snapshot) => {
+    memberBookings = snapshot.docs.map(docFromSnapshot);
+    merge();
+  }, (err) => {
+    console.warn('[subscribeToUserBookings] member snapshot error:', err);
+  });
+
+  return () => {
+    unsubscribeOwner();
+    unsubscribeMember();
+  };
 }
 
 export function subscribeToUserBookingsByUserId(userId: string, callback: (bookings: BookingRecord[]) => void) {
@@ -154,8 +192,6 @@ export function subscribeToUserBookingsByUserId(userId: string, callback: (booki
 export async function getBlockedSlotsForCourtAndDate(courtId: string, date: string): Promise<BlockedSlot[]> {
   const q = query(collection(db, BLOCKED_SLOTS_COLLECTION), where('courtId', '==', courtId));
   const snapshot = await getDocs(q);
-  const checkDate = new Date(date);
-  const checkDayOfWeek = checkDate.getDay();
 
   return snapshot.docs.map((snap) => {
     const d = snap.data();
@@ -173,21 +209,16 @@ export async function getBlockedSlotsForCourtAndDate(courtId: string, date: stri
       clientEmail: (d.clientEmail as string) || undefined,
       reason: (d.reason as string) || undefined,
       isRecurring: (d.isRecurring as boolean) || false,
+      intervalWeeks: (d.intervalWeeks as number | undefined) ?? undefined,
+      exactDates: Array.isArray(d.exactDates) ? (d.exactDates as string[]) : undefined,
+      overrides: d.overrides && typeof d.overrides === 'object'
+        ? (d.overrides as Record<string, boolean>)
+        : undefined,
       createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toMillis() : (d.createdAt as number) || Date.now(),
       createdBy: (d.createdBy as string) || 'admin',
       dayOfWeek: (d.dayOfWeek as number) ?? undefined,
     };
-  }).filter(block => {
-    // Check if block applies to this date
-    if (block.isRecurring) {
-      const blockStart = new Date(block.startDate);
-      const weekDiff = Math.floor((checkDate.getTime() - blockStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-      if (weekDiff < 0) return false;
-      if (block.endDate && checkDate > new Date(block.endDate)) return false;
-      return (block.dayOfWeek ?? new Date(block.startDate).getDay()) === checkDayOfWeek;
-    }
-    return block.startDate === date;
-  });
+  }).filter(block => blockAppliesToDate(block, date));
 }
 
 // ---- Court availability (server-side) ----
@@ -228,6 +259,73 @@ export async function getCourtBookedIntervals(courtId: string, date: string): Pr
   }
 }
 
+// ---- Invite helpers ----
+
+export async function generateBookingInvite(bookingId: string): Promise<string> {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) {
+    throw new Error('User not authenticated');
+  }
+
+  const res = await fetch(GENERATE_INVITE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken, bookingId }),
+  });
+
+  const result = (await res.json()) as { success?: boolean; token?: string; error?: string };
+  if (!res.ok || !result.success || !result.token) {
+    throw new Error(result.error || `Invite generation failed (${res.status})`);
+  }
+  return result.token;
+}
+
+export interface BookingInvite {
+  bookingId: string;
+  courtName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  uses: number;
+  maxUses: number;
+  active: boolean;
+}
+
+export async function getBookingInvite(token: string): Promise<BookingInvite | null> {
+  const snap = await getDoc(doc(db, BOOKING_INVITES_COLLECTION, token));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  return {
+    bookingId: data.bookingId as string,
+    courtName: data.courtName as string,
+    date: data.date as string,
+    startTime: data.startTime as string,
+    endTime: data.endTime as string,
+    uses: (data.uses as number) || 0,
+    maxUses: (data.maxUses as number) || 0,
+    active: data.active !== false,
+  };
+}
+
+export async function joinBookingByInvite(token: string): Promise<{ bookingId: string }> {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) {
+    throw new Error('User not authenticated');
+  }
+
+  const res = await fetch(JOIN_BOOKING_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken, token }),
+  });
+
+  const result = (await res.json()) as { success?: boolean; bookingId?: string; error?: string };
+  if (!res.ok || !result.success || !result.bookingId) {
+    throw new Error(result.error || `Join booking failed (${res.status})`);
+  }
+  return { bookingId: result.bookingId };
+}
+
 // ---- Helpers ----
 
 function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown> }): BookingRecord {
@@ -248,6 +346,8 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
     totalPrice: data.totalPrice as number,
     userEmail: (data.userEmail as string) || '',
     userId: (data.userId as string) || undefined,
+    members: (data.members as string[] | undefined) || undefined,
+    cancelledBy: (data.cancelledBy as CancellationSource | undefined) || undefined,
   };
 }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { acquireBodyScrollLock } from '@/admin/hooks/useBodyScrollLock';
 
 interface Props {
   children: React.ReactNode;
@@ -24,12 +25,11 @@ export function ModalPortal({ children }: Props) {
     }
     setMounted(true);
 
-    // Lock body scroll when modal is open
-    const original = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // Lock body scroll when modal is open (uses global counter)
+    const release = acquireBodyScrollLock();
 
     return () => {
-      document.body.style.overflow = original;
+      release();
     };
   }, []);
 

@@ -44,6 +44,7 @@ export interface AuthState {
 
 export type BookingStatus = 'confirmed' | 'cancelled';
 export type BookingAttendance = 'pending' | 'played' | 'missed';
+export type CancellationSource = 'client' | 'admin';
 
 export interface BookingRecord {
   id: string;
@@ -61,4 +62,6 @@ export interface BookingRecord {
   totalPrice: number;
   userEmail: string;
   userId?: string;
+  members?: string[];
+  cancelledBy?: CancellationSource;
 }

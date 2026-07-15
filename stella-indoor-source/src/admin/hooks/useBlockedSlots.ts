@@ -19,7 +19,10 @@ export interface BlockedSlot {
   clientPhone?: string | null;
   clientEmail?: string | null;
   reason?: string | null;       // For closed/maintenance
-  isRecurring: boolean;  // true = every week on this day
+  isRecurring: boolean;  // true = recurring on this day
+  intervalWeeks?: number; // 1 = weekly, 2 = bi-weekly, etc. (default 1)
+  exactDates?: string[]; // when set, block only applies on these specific YYYY-MM-DD dates
+  overrides?: Record<string, boolean>; // per-date override: true = blocked, false = open
   createdAt: number;
   createdBy: string;
   // Computed: which day of week (0-6) for recurring
@@ -27,6 +30,52 @@ export interface BlockedSlot {
 }
 
 const COLLECTION = 'blockedSlots';
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MS_PER_WEEK = 7 * MS_PER_DAY;
+
+/**
+ * Determine whether a block applies to a given YYYY-MM-DD date.
+ * Order of precedence:
+ * 1. Per-date override (if set)
+ * 2. Exact-dates list (if set)
+ * 3. Recurring rule with optional interval/end date
+ * 4. One-time rule
+ */
+export function blockAppliesToDate(
+  block: Pick<BlockedSlot, 'startDate' | 'endDate' | 'isRecurring' | 'dayOfWeek' | 'intervalWeeks' | 'exactDates' | 'overrides'>,
+  date: string
+): boolean {
+  const overrides = block.overrides || {};
+  if (overrides[date] !== undefined) {
+    return overrides[date];
+  }
+
+  if (block.exactDates && block.exactDates.length > 0) {
+    return block.exactDates.includes(date);
+  }
+
+  if (block.isRecurring) {
+    const checkDate = new Date(date);
+    const checkDay = checkDate.getDay();
+    const blockDay = block.dayOfWeek ?? new Date(block.startDate).getDay();
+    if (checkDay !== blockDay) return false;
+
+    const blockStart = new Date(block.startDate);
+    if (checkDate.getTime() < blockStart.getTime()) return false;
+
+    if (block.endDate) {
+      const blockEnd = new Date(block.endDate);
+      if (checkDate.getTime() > blockEnd.getTime()) return false;
+    }
+
+    const weekDiff = Math.floor((checkDate.getTime() - blockStart.getTime()) / MS_PER_WEEK);
+    const interval = block.intervalWeeks || 1;
+    return weekDiff % interval === 0;
+  }
+
+  return block.startDate === date;
+}
 
 function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown> }): BlockedSlot {
   const d = snap.data();
@@ -44,6 +93,11 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
     clientEmail: (d.clientEmail as string | null) ?? null,
     reason: (d.reason as string | null) ?? null,
     isRecurring: (d.isRecurring as boolean) || false,
+    intervalWeeks: (d.intervalWeeks as number | undefined) ?? undefined,
+    exactDates: Array.isArray(d.exactDates) ? (d.exactDates as string[]) : undefined,
+    overrides: d.overrides && typeof d.overrides === 'object'
+      ? (d.overrides as Record<string, boolean>)
+      : undefined,
     createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toMillis() : (d.createdAt as number) || Date.now(),
     createdBy: (d.createdBy as string) || 'admin',
     dayOfWeek: (d.dayOfWeek as number) ?? undefined,
@@ -82,7 +136,11 @@ export function useBlockedSlots() {
   }, []);
 
   const updateBlockedSlot = useCallback(async (id: string, data: Partial<Omit<BlockedSlot, 'id' | 'createdAt'>>): Promise<void> => {
-    const updateData: Record<string, unknown> = { ...data };
+    // Firestore rejects undefined field values, so only send fields that are set
+    const updateData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) updateData[key] = value;
+    }
     if (data.startDate) {
       updateData.dayOfWeek = new Date(data.startDate).getDay();
     }
@@ -100,49 +158,15 @@ export function useBlockedSlots() {
     const slotStart = h * 60 + m;
     const slotEnd = slotStart + duration * 60;
 
-    const checkDate = new Date(date);
-    const checkDayOfWeek = checkDate.getDay();
-
     for (const block of slots) {
-      // Check court match
       if (block.courtId !== courtId) continue;
+      if (!blockAppliesToDate(block, date)) continue;
 
-      // Check if block applies to this date
-      let applies = false;
-
-      if (block.isRecurring) {
-        // Recurring: check if the day of week matches AND we're on or after start date
-        if (block.dayOfWeek === checkDayOfWeek || new Date(block.startDate).getDay() === checkDayOfWeek) {
-          const blockStart = new Date(block.startDate);
-          // Set blockStart to the same day of week for comparison
-          const weekDiff = Math.floor((checkDate.getTime() - blockStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-          if (weekDiff >= 0) {
-            // Check if there's an end date
-            if (block.endDate) {
-              const blockEnd = new Date(block.endDate);
-              if (checkDate <= blockEnd) {
-                applies = true;
-              }
-            } else {
-              // No end date = indefinite
-              applies = true;
-            }
-          }
-        }
-      } else {
-        // One-time: exact date match
-        applies = block.startDate === date;
-      }
-
-      if (!applies) continue;
-
-      // Check time overlap
       const [bStartH, bStartM] = block.startTime.split(':').map(Number);
       const [bEndH, bEndM] = block.endTime.split(':').map(Number);
       const blockStartMin = bStartH * 60 + bStartM;
       const blockEndMin = bEndH * 60 + bEndM;
 
-      // Overlap check: slot starts before block ends AND slot ends after block starts
       if (slotStart < blockEndMin && slotEnd > blockStartMin) {
         const reason = block.type === 'block-booking'
           ? `Block booking: ${block.clientName}`
@@ -156,21 +180,9 @@ export function useBlockedSlots() {
 
   // Get all blocked slots for a specific date (for calendar view)
   const getBlocksForDate = useCallback((date: string): BlockedSlot[] => {
-    const checkDate = new Date(date);
-    const checkDayOfWeek = checkDate.getDay();
-
     return slots.filter(block => {
-      if (block.courtId === '') return false; // Skip if no court
-
-      if (block.isRecurring) {
-        const blockStart = new Date(block.startDate);
-        const weekDiff = Math.floor((checkDate.getTime() - blockStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-        if (weekDiff < 0) return false;
-        if (block.endDate && checkDate > new Date(block.endDate)) return false;
-        return (block.dayOfWeek ?? new Date(block.startDate).getDay()) === checkDayOfWeek;
-      }
-
-      return block.startDate === date;
+      if (!block.courtId) return false;
+      return blockAppliesToDate(block, date);
     });
   }, [slots]);
 

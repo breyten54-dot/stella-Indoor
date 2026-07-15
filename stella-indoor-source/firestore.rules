@@ -15,10 +15,14 @@ service cloud.firestore {
       return isSignedIn() && getAuthEmail().lower() == userEmail.lower();
     }
 
+    function isMember(booking) {
+      return isSignedIn() && getAuthEmail().lower() in booking.members;
+    }
+
     function isAdmin() {
-      // Primary admin account. Add other admins by updating this rule or by
-      // creating entries in the admins collection and adding an exists() check.
-      return isSignedIn() && getAuthEmail().lower() == 'stellasportshub@gmail.com';
+      // Any signed-in user whose email exists as a document ID in the
+      // /admins collection is considered an admin.
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(getAuthEmail().lower()));
     }
 
     // Validation helpers
@@ -32,10 +36,12 @@ service cloud.firestore {
         && user.email.matches('^[^@]+@[^@]+$');
     }
 
-    // Admins collection: only admins can read the list of admins.
+    // Admins collection: a user can read only their own admins document
+    // to determine whether they are an admin. Writes are managed manually
+    // in the Firebase Console.
     match /admins/{email} {
-      allow read: if isAdmin();
-      allow create, update, delete: if false; // Manage admins manually in Firebase Console
+      allow read: if isSignedIn() && email.lower() == getAuthEmail().lower();
+      allow create, update, delete: if false;
     }
 
     // Users: public creation and read (client booking app)
@@ -48,9 +54,9 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Bookings: authenticated users can create; owners/admins can read/update.
+    // Bookings: authenticated users can create; owners/members/admins can read; owners/admins can update.
     match /bookings/{bookingId} {
-      allow read: if isSignedIn() && (isOwner(resource.data.userEmail) || isAdmin());
+      allow read: if isSignedIn() && (isOwner(resource.data.userEmail) || isMember(resource.data) || isAdmin());
       allow create: if isSignedIn()
         && isValidBooking(request.resource.data)
         && request.resource.data.userEmail == getAuthEmail();
@@ -60,16 +66,30 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Booking invites: anyone with the link can read the invite details; creation is done by the Cloud Function.
+    match /bookingInvites/{token} {
+      allow read: if true;
+      allow create: if isSignedIn() && isOwner(resource.data.createdBy);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // Pending bookings for conflict prevention
     match /pendingBookings/{id} {
       allow read, write: if isSignedIn()
         && request.resource.data.keys().hasAll(['courtId', 'date', 'startTime', 'endTime']);
     }
 
-    // Notifications: owners/admins only
+    // Notifications: created ONLY server-side (Cloud Functions bypass rules)
+    // or by admins. Clients may read their own, flip their own read/shown
+    // flags, and delete their own — nothing more.
     match /notifications/{id} {
       allow read: if isSignedIn() && (isOwner(resource.data.userEmail) || isAdmin());
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (isOwner(resource.data.userEmail)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'shown']));
+      allow delete: if isAdmin() || isOwner(resource.data.userEmail);
     }
 
     // Scheduled email reminders: admins only
@@ -98,6 +118,12 @@ service cloud.firestore {
     match /clipOfTheWeek/{id} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
+    }
+
+    // App settings: admins read/write
+    match /appSettings/{id} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
     // Password reset codes: deprecated, no access

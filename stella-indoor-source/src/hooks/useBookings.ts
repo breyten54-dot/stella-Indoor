@@ -21,7 +21,7 @@ export function useBookings() {
   };
 
   const cancelUserBooking = async (id: string): Promise<void> => {
-    await cancelBookingDb(id);
+    await cancelBookingDb(id, 'client');
   };
 
   const canCancel = (date: string, startTime: string): boolean => {

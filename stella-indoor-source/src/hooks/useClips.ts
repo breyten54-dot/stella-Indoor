@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, increment, arrayUnion, arrayRemove, query, orderBy, onSnapshot, Timestamp, deleteDoc
 } from 'firebase/firestore';
@@ -18,28 +18,62 @@ function getWeekNumber(date: Date): number {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
-export function useClips(cameraId?: string) {
-  const [clips, setClips] = useState<Clip[]>([]);
+function timestampToMillis(value: unknown): number {
+  if (value instanceof Timestamp) return value.toMillis();
+  if (typeof value === 'number') return value;
+  if (value && typeof value === 'object' && 'toMillis' in value && typeof (value as { toMillis: () => number }).toMillis === 'function') {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return 0;
+}
+
+export interface ClipFilter {
+  cameraId?: string;
+  /** Inclusive start timestamp (ms) */
+  startTime?: number;
+  /** Inclusive end timestamp (ms) */
+  endTime?: number;
+}
+
+export function useClips(filter?: ClipFilter) {
+  const [rawClips, setRawClips] = useState<Clip[]>([]);
   const [loading, setLoading] = useState(true);
   const [cotw, setCotw] = useState<ClipOfTheWeek | null>(null);
 
-  // Subscribe to clips (filtered by cameraId if provided)
+  // Subscribe to clips
   useEffect(() => {
     setLoading(true);
-    const q = cameraId
-      ? query(collection(db, CLIPS_COLLECTION), orderBy('uploadedAt', 'desc'))
-      : query(collection(db, CLIPS_COLLECTION), orderBy('uploadedAt', 'desc'));
+    const q = query(collection(db, CLIPS_COLLECTION), orderBy('uploadedAt', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
-      let data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Clip));
-      // Filter by cameraId client-side (Firestore doesn't support multi-field queries easily)
-      if (cameraId) {
-        data = data.filter(c => c.cameraId === cameraId);
-      }
-      setClips(data);
+      const data = snapshot.docs.map(d => {
+        const raw = d.data();
+        return {
+          id: d.id,
+          ...raw,
+          uploadedAt: timestampToMillis(raw.uploadedAt),
+        } as Clip;
+      });
+      setRawClips(data);
       setLoading(false);
     }, () => setLoading(false));
     return () => unsub();
-  }, [cameraId]);
+  }, []);
+
+  const clips = useMemo(() => {
+    if (!filter) return rawClips;
+    const { cameraId, startTime, endTime } = filter;
+    let data = rawClips;
+    if (cameraId) {
+      data = data.filter(c => c.cameraId === cameraId);
+    }
+    if (startTime != null) {
+      data = data.filter(c => c.uploadedAt >= startTime);
+    }
+    if (endTime != null) {
+      data = data.filter(c => c.uploadedAt <= endTime);
+    }
+    return data;
+  }, [rawClips, filter]);
 
   // Subscribe to Clip of the Week
   useEffect(() => {
@@ -62,7 +96,10 @@ export function useClips(cameraId?: string) {
 
     const clipsSnap = await getDocs(collection(db, CLIPS_COLLECTION));
     const allClips: Clip[] = [];
-    clipsSnap.forEach(d => allClips.push({ id: d.id, ...d.data() } as Clip));
+    clipsSnap.forEach(d => {
+      const raw = d.data();
+      allClips.push({ id: d.id, ...raw, uploadedAt: timestampToMillis(raw.uploadedAt) } as Clip);
+    });
 
     let removed = false;
     for (const clip of allClips) {
@@ -78,7 +115,10 @@ export function useClips(cameraId?: string) {
     // Re-fetch remaining and crown new #1
     const remainingSnap = await getDocs(collection(db, CLIPS_COLLECTION));
     const remaining: Clip[] = [];
-    remainingSnap.forEach(d => remaining.push({ id: d.id, ...d.data() } as Clip));
+    remainingSnap.forEach(d => {
+      const raw = d.data();
+      remaining.push({ id: d.id, ...raw, uploadedAt: timestampToMillis(raw.uploadedAt) } as Clip);
+    });
 
     if (remaining.length > 0) {
       const winner = remaining.sort((a, b) => b.likes - a.likes)[0];

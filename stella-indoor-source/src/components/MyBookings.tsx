@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
-import { subscribeToUserBookings, canCancelBooking } from '@/hooks/useFirestoreBookings';
+import { subscribeToUserBookings, canCancelBooking, cancelBooking } from '@/hooks/useFirestoreBookings';
 import type { BookingRecord } from '@/types/booking';
-import { cancelBooking } from '@/hooks/useFirestoreBookings';
-import { deleteRemindersForBooking } from '@/hooks/useNotifications';
-import { sendCancellationEmail, cancelScheduledEmailsForBooking } from '@/lib/emailService';
 import { CalendarDays, Clock, MapPin, X, Check, AlertTriangle } from 'lucide-react';
 
 interface Props {
@@ -14,7 +11,6 @@ interface Props {
 export function MyBookings({ userEmail, onClose }: Props) {
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [emailToast, setEmailToast] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeToUserBookings(userEmail, (data) => {
@@ -37,26 +33,9 @@ export function MyBookings({ userEmail, onClose }: Props) {
     if (!canCancelBooking(booking.date, booking.startTime)) return;
     setCancellingId(booking.id);
     try {
-      await cancelBooking(booking.id);
-      // Remove any scheduled reminders
-      await deleteRemindersForBooking(booking.id);
-      // Cancel any pending scheduled reminder emails
-      await cancelScheduledEmailsForBooking(booking.id);
-      // Send cancellation email to the client
-      await sendCancellationEmail({
-        toEmail: booking.userEmail,
-        clientName: booking.clientDetails?.fullName || 'Valued Client',
-        bookingRef: booking.id,
-        courtName: booking.courtName,
-        date: booking.date,
-        startTime: booking.startTime,
-        endTime: booking.endTime,
-        duration: booking.duration,
-        totalPrice: booking.totalPrice,
-        reason: 'Cancelled by client',
-      }).catch((err) => console.warn('Cancellation email failed:', err));
-      setEmailToast(`Cancellation email sent to ${booking.userEmail}`);
-      setTimeout(() => setEmailToast(null), 4000);
+      // The Cloud Function sends the confirmation email, cleans up reminders,
+      // and notifies admins (push + in-app).
+      await cancelBooking(booking.id, 'client');
     } catch (e) {
       console.error('Cancel failed', e);
     } finally {
@@ -71,14 +50,6 @@ export function MyBookings({ userEmail, onClose }: Props) {
   return (
     <div className="min-h-screen bg-[#F5F5F0] pt-14">
       <div className="max-w-3xl mx-auto px-4 py-8">
-        {/* Cancellation email toast */}
-        {emailToast && (
-          <div className="mb-4 bg-[#1B7A40] rounded-xl px-4 py-3 flex items-center gap-2 text-white text-sm font-semibold animate-fade-in">
-            <Check className="w-4 h-4 shrink-0" />
-            {emailToast}
-          </div>
-        )}
-
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-black text-[#0A0A0A] tracking-tight">My Bookings</h1>
           <button onClick={onClose}

@@ -1,15 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useBodyScrollLock } from '@/admin/hooks/useBodyScrollLock';
-import { ModalPortal } from '@/admin/components/ModalPortal';
-import { CalendarDays, Clock, CreditCard, Users, TrendingUp, Phone, Mail, X, MapPin, Clock3, ClipboardList, ShoppingCart } from 'lucide-react';
-import type { BookingRecord } from '@/types/booking';
+import { CalendarDays, Clock, CreditCard, Users, TrendingUp, Phone } from 'lucide-react';
+import type { BookingRecord, BookingAttendance } from '@/types/booking';
 import type { DailyStats } from '../hooks/useAdminBookings';
+import { BookingDetailModal } from '../components/BookingDetailModal';
 
 interface Props {
   bookings: BookingRecord[];
   stats: { totalBookings: number; cancelledBookings: number; todayBookings: number; totalRevenue: number };
   dailyStats: DailyStats[];
   courtStats: { id: string; name: string; bookings: number; revenue: number }[];
+  onAttendanceChange: (booking: BookingRecord, attendance: BookingAttendance) => Promise<void>;
 }
 
 function StatCard({ label, value, icon: Icon }: { label: string; value: string; icon: React.ElementType }) {
@@ -24,7 +25,7 @@ function StatCard({ label, value, icon: Icon }: { label: string; value: string; 
   );
 }
 
-export function Dashboard({ bookings, stats, dailyStats, courtStats }: Props) {
+export function Dashboard({ bookings, stats, dailyStats, courtStats, onAttendanceChange }: Props) {
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
   useBodyScrollLock(selectedBooking !== null);
 
@@ -153,144 +154,15 @@ export function Dashboard({ bookings, stats, dailyStats, courtStats }: Props) {
 
       {/* Booking Detail Modal */}
       {selectedBooking && (
-        <BookingDetailModal booking={selectedBooking} onClose={() => setSelectedBooking(null)} />
+        <BookingDetailModal
+          booking={bookings.find(b => b.id === selectedBooking.id) ?? selectedBooking}
+          onClose={() => setSelectedBooking(null)}
+          onCancel={async () => {}}
+          onAttendanceChange={onAttendanceChange}
+          allowCancel={false}
+        />
       )}
     </div>
   );
 }
 
-function BookingDetailModal({ booking, onClose }: { booking: BookingRecord; onClose: () => void }) {
-  return (
-    <ModalPortal>
-      <div className="fixed inset-0 z-[99998] bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-[99999] flex items-start justify-center p-4 overflow-y-auto pointer-events-none">
-        <div className="bg-[#13182b] rounded-2xl border border-[#1e293b] shadow-2xl w-full max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85vh] overflow-y-auto my-auto pointer-events-auto animate-fade-in" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-[#1e293b]">
-          <h3 className="text-sm font-bold text-[#94a3b8]">Booking Details</h3>
-          <button onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-[#1e293b] hover:bg-[#334155] flex items-center justify-center text-[#64748b] hover:text-white transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-5">
-          {/* Booking Ref */}
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-[#475569] font-mono uppercase tracking-wider">Reference</span>
-            <span className="text-[10px] text-[#818cf8] font-mono bg-[#6366f1]/10 px-2 py-0.5 rounded">{booking.id}</span>
-          </div>
-
-          {/* Court */}
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#6366f1]/10 flex items-center justify-center shrink-0">
-              <MapPin className="w-4 h-4 text-[#818cf8]" />
-            </div>
-            <div>
-              <p className="text-xs text-[#64748b]">Court</p>
-              <p className="text-sm font-semibold">{booking.courtName}</p>
-            </div>
-          </div>
-
-          {/* Time */}
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#6366f1]/10 flex items-center justify-center shrink-0">
-              <Clock3 className="w-4 h-4 text-[#818cf8]" />
-            </div>
-            <div>
-              <p className="text-xs text-[#64748b]">Date & Time</p>
-              <p className="text-sm font-semibold">{booking.date}</p>
-              <p className="text-xs text-[#94a3b8]">{booking.startTime} — {booking.endTime} ({booking.duration}h)</p>
-            </div>
-          </div>
-
-          {/* Client Details */}
-          <div className="bg-[#0b0f1e] rounded-xl border border-[#1e293b] p-4 space-y-3">
-            <div className="flex items-center gap-2 mb-2">
-              <ClipboardList className="w-3.5 h-3.5 text-[#818cf8]" />
-              <h4 className="text-xs font-bold text-[#94a3b8] uppercase tracking-wider">Client Information</h4>
-            </div>
-
-            <div>
-              <p className="text-[10px] text-[#475569] uppercase tracking-wider">Full Name</p>
-              <p className="text-sm font-semibold">{booking.clientDetails.fullName}</p>
-            </div>
-
-            {booking.clientDetails.email && (
-              <div>
-                <p className="text-[10px] text-[#475569] uppercase tracking-wider">Email</p>
-                <p className="text-sm font-semibold flex items-center gap-1.5">
-                  <Mail className="w-3 h-3 text-[#64748b]" />
-                  {booking.clientDetails.email}
-                </p>
-              </div>
-            )}
-
-            {booking.clientDetails.phone && (
-              <div>
-                <p className="text-[10px] text-[#475569] uppercase tracking-wider">Phone</p>
-                <p className="text-sm font-semibold flex items-center gap-1.5">
-                  <Phone className="w-3 h-3 text-[#64748b]" />
-                  {booking.clientDetails.phone}
-                </p>
-              </div>
-            )}
-
-            {booking.clientDetails.teamName && (
-              <div>
-                <p className="text-[10px] text-[#475569] uppercase tracking-wider">Team</p>
-                <p className="text-sm font-semibold">{booking.clientDetails.teamName}</p>
-              </div>
-            )}
-
-            {booking.clientDetails.specialRequests && (
-              <div>
-                <p className="text-[10px] text-[#475569] uppercase tracking-wider">Special Requests</p>
-                <p className="text-xs text-[#94a3b8]">{booking.clientDetails.specialRequests}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Add-ons */}
-          {(booking.addons.soccerBall > 0 || booking.addons.bibs > 0) && (
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#8b5cf6]/10 flex items-center justify-center shrink-0">
-                <ShoppingCart className="w-4 h-4 text-[#8b5cf6]" />
-              </div>
-              <div>
-                <p className="text-xs text-[#64748b]">Add-ons</p>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {booking.addons.soccerBall > 0 && (
-                    <span className="text-[10px] font-bold bg-[#8b5cf6]/10 text-[#8b5cf6] px-2 py-0.5 rounded-full">
-                      {booking.addons.soccerBall}x Soccer Ball (R{booking.addons.soccerBall * 10})
-                    </span>
-                  )}
-                  {booking.addons.bibs > 0 && (
-                    <span className="text-[10px] font-bold bg-[#ec4899]/10 text-[#ec4899] px-2 py-0.5 rounded-full">
-                      {booking.addons.bibs}x Bibs (R{booking.addons.bibs * 10})
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Total */}
-          <div className="flex items-center justify-between pt-4 border-t border-[#1e293b]">
-            <span className="text-sm text-[#64748b]">Total Amount</span>
-            <span className="text-2xl font-black text-[#818cf8] tab-nums">R{booking.totalPrice}</span>
-          </div>
-        </div>
-
-        {/* Close */}
-        <div className="p-4 border-t border-[#1e293b] flex justify-end">
-          <button onClick={onClose}
-            className="h-10 px-6 rounded-xl bg-[#1e293b] hover:bg-[#334155] text-white text-sm font-semibold transition-colors">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-    </ModalPortal>
-  );
-}

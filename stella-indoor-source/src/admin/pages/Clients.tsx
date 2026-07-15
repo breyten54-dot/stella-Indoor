@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useBodyScrollLock } from '@/admin/hooks/useBodyScrollLock';
 import { ModalPortal } from '@/admin/components/ModalPortal';
 import { Users, Search, Phone, Mail, Calendar, ChevronRight, UserCheck } from 'lucide-react';
@@ -13,14 +13,43 @@ interface Props {
 
 export function Clients({ clients, bookings, loading }: Props) {
   const [search, setSearch] = useState('');
+  const [bookerFilter, setBookerFilter] = useState<'all' | 'new' | 'recurring'>('all');
   const [selectedClient, setSelectedClient] = useState<ClientRecord | null>(null);
   useBodyScrollLock(selectedClient !== null);
 
-  const filtered = clients.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.email.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone.includes(search)
-  );
+  // Confirmed-booking count per client email → drives the New vs Recurring split.
+  const confirmedCountByEmail = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const b of bookings) {
+      if (b.status !== 'confirmed') continue;
+      const key = b.userEmail.toLowerCase();
+      m.set(key, (m.get(key) || 0) + 1);
+    }
+    return m;
+  }, [bookings]);
+
+  // New booker = exactly 1 confirmed booking (first-timer).
+  // Recurring booker = 2+ confirmed bookings (returning).
+  const bookerType = (email: string): 'new' | 'recurring' | 'none' => {
+    const n = confirmedCountByEmail.get(email.toLowerCase()) || 0;
+    if (n >= 2) return 'recurring';
+    if (n === 1) return 'new';
+    return 'none';
+  };
+
+  const newCount = useMemo(() => clients.filter(c => bookerType(c.email) === 'new').length, [clients, confirmedCountByEmail]);
+  const recurringCount = useMemo(() => clients.filter(c => bookerType(c.email) === 'recurring').length, [clients, confirmedCountByEmail]);
+
+  const filtered = clients.filter(c => {
+    const matchesSearch =
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.email.toLowerCase().includes(search.toLowerCase()) ||
+      c.phone.includes(search);
+    if (!matchesSearch) return false;
+    if (bookerFilter === 'new') return bookerType(c.email) === 'new';
+    if (bookerFilter === 'recurring') return bookerType(c.email) === 'recurring';
+    return true;
+  });
 
   const getClientBookings = (email: string) => {
     return bookings
@@ -74,6 +103,29 @@ export function Clients({ clients, bookings, loading }: Props) {
         </div>
       </div>
 
+      {/* Booker filter — New (booked once) vs Recurring (booked 2+ times) */}
+      <div className="flex flex-wrap items-center gap-2">
+        {([
+          { key: 'all', label: 'All Clients', count: clients.length, hint: 'Everyone in your database' },
+          { key: 'new', label: 'New Bookers', count: newCount, hint: 'Clients with exactly 1 confirmed booking' },
+          { key: 'recurring', label: 'Recurring Bookers', count: recurringCount, hint: 'Clients with 2 or more confirmed bookings' },
+        ] as const).map(opt => (
+          <button
+            key={opt.key}
+            onClick={() => setBookerFilter(opt.key)}
+            title={opt.hint}
+            className={`h-10 px-4 rounded-xl text-sm font-bold flex items-center gap-2 transition-all border ${
+              bookerFilter === opt.key
+                ? 'bg-[#6366f1] text-white border-[#6366f1]'
+                : 'bg-[#13182b] text-[#94a3b8] border-[#1e293b] hover:border-[#334155]'
+            }`}
+          >
+            {opt.label}
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${bookerFilter === opt.key ? 'bg-white/20 text-white' : 'bg-[#0b0f1e] text-[#64748b]'}`}>{opt.count}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Clients List */}
       <div className="bg-[#13182b] rounded-2xl border border-[#1e293b] overflow-hidden">
         {loading ? (
@@ -83,7 +135,12 @@ export function Clients({ clients, bookings, loading }: Props) {
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <Users className="w-10 h-10 text-[#1e293b] mx-auto mb-3" />
-            <p className="text-sm text-[#64748b]">{search ? 'No clients match your search' : 'No registered clients yet'}</p>
+            <p className="text-sm text-[#64748b]">
+              {search ? 'No clients match your search'
+                : bookerFilter === 'new' ? 'No new bookers'
+                : bookerFilter === 'recurring' ? 'No recurring bookers yet'
+                : 'No registered clients yet'}
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-[#1e293b]">
@@ -106,9 +163,14 @@ export function Clients({ clients, bookings, loading }: Props) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold truncate">{client.name}</p>
-                        {confirmedCount > 0 && (
+                        {bookerType(client.email) === 'recurring' && (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#6366f1]/10 text-[#818cf8]">
-                            {confirmedCount} booking{confirmedCount !== 1 ? 's' : ''}
+                            Recurring · {confirmedCount}
+                          </span>
+                        )}
+                        {bookerType(client.email) === 'new' && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
+                            New
                           </span>
                         )}
                       </div>

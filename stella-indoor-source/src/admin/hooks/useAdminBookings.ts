@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { onSnapshot, collection, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { BookingRecord } from '@/types/booking';
+import type { BookingRecord, CancellationSource } from '@/types/booking';
 
 export interface DailyStats {
   date: string;
@@ -37,6 +37,7 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
     addons: data.addons as BookingRecord['addons'],
     totalPrice: data.totalPrice as number,
     userEmail: (data.userEmail as string) || '',
+    cancelledBy: (data.cancelledBy as CancellationSource | undefined) || undefined,
   };
 }
 
@@ -72,7 +73,7 @@ export function useAdminBookings() {
 
       const cancelledBookings = data.filter(b => {
         const prev = prevById.get(b.id);
-        return prev && prev.status === 'confirmed' && b.status === 'cancelled';
+        return prev && prev.status === 'confirmed' && b.status === 'cancelled' && b.cancelledBy !== 'admin';
       });
 
       const changedBookings = [...newBookings, ...cancelledBookings];
@@ -100,12 +101,20 @@ export function useAdminBookings() {
           if ('Notification' in window && Notification.permission === 'granted') {
             try {
               const title = isCancelled ? 'Booking Cancelled — Stella Indoor' : 'New Booking — Stella Indoor';
-              new Notification(title, {
+              const options: NotificationOptions & { badge?: string; vibrate?: number[]; renotify?: boolean; silent?: boolean } = {
                 body: `${b.clientDetails.fullName} ${isCancelled ? 'cancelled' : 'booked'} ${b.courtName} for ${b.date} at ${b.startTime}`,
-                icon: '/logo-original.jpg',
-                badge: '/logo-original.jpg',
+                icon: '/logo-admin.png',
+                // Android masks the badge into a status-bar icon; a colour photo
+                // becomes a plain white square. badge-admin.png is a white crest
+                // silhouette on transparency.
+                badge: '/badge-admin.png',
                 tag: b.id,
-              });
+                requireInteraction: true,
+                vibrate: [300, 100, 300],
+                renotify: true,
+                silent: false,
+              };
+              new Notification(title, options);
             } catch {
               // Browser notifications may fail silently
             }

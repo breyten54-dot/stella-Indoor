@@ -6,11 +6,12 @@ import { InstallButton } from '@/components/InstallButton';
 
 interface LoginPageProps {
   onLogin: (email: string, name: string, phone: string) => void;
+  contextMessage?: string;
 }
 
 type AuthMode = 'login' | 'register' | 'reset';
 
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function LoginPage({ onLogin, contextMessage }: LoginPageProps) {
   const [mode, setMode] = useState<AuthMode>('login');
 
   // Login fields
@@ -167,7 +168,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
   };
 
-  const inputClass = 'w-full h-[52px] pl-11 pr-4 rounded-xl border bg-[#0A0A0A] text-white text-sm font-medium placeholder:text-[#4A4A4A] focus:outline-none focus:ring-[3px] focus:ring-[#1B7A40]/10 focus:border-[#1B7A40] transition-all duration-200 border-[#2A2A2A]';
+  const inputClass = 'w-full h-[52px] pl-11 pr-4 rounded-xl border bg-[#0A0A0A] text-white text-sm font-medium placeholder:text-[#7A7A7A] focus:outline-none focus:ring-[3px] focus:ring-[#1B7A40]/10 focus:border-[#1B7A40] transition-all duration-200 border-[#2A2A2A]';
 
   const subtitle = mode === 'login' ? 'Sign in to book your court' : mode === 'register' ? 'Create your account' : 'Reset your password';
 
@@ -188,6 +189,29 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">STELLA INDOOR</h1>
           <p className="text-[#8A8A8A] text-sm mt-1">{subtitle}</p>
+          {contextMessage && (
+            <>
+              <div className="mt-4 p-3 rounded-xl bg-[#1B7A40]/10 border border-[#1B7A40]/20 text-[#7ED321] text-sm font-semibold">
+                {contextMessage}
+              </div>
+              <div className="mt-4 inline-flex bg-[#2A2A2A] rounded-xl p-1">
+                <button
+                  type="button"
+                  onClick={() => setMode('login')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${mode === 'login' ? 'bg-[#1B7A40] text-white' : 'text-[#8A8A8A] hover:text-white'}`}
+                >
+                  I have an account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('register')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${mode === 'register' ? 'bg-[#1B7A40] text-white' : 'text-[#8A8A8A] hover:text-white'}`}
+                >
+                  Create account
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Card */}
@@ -221,7 +245,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                     className={`${inputClass} pr-11`} />
                   <button type="button" tabIndex={-1}
                     onClick={() => setShowLoginPassword(!showLoginPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A8A] hover:text-[#1B7A40] transition-colors"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-[#8A8A8A] hover:text-[#1B7A40] transition-colors"
                     aria-label={showLoginPassword ? 'Hide password' : 'Show password'}>
                     {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -311,7 +335,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                     className={`${inputClass} pr-11`} />
                   <button type="button" tabIndex={-1}
                     onClick={() => setShowRegPassword(!showRegPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A8A] hover:text-[#1B7A40] transition-colors"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-[#8A8A8A] hover:text-[#1B7A40] transition-colors"
                     aria-label={showRegPassword ? 'Hide password' : 'Show password'}>
                     {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -328,7 +352,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                     className={`${inputClass} pr-11`} />
                   <button type="button" tabIndex={-1}
                     onClick={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A8A] hover:text-[#1B7A40] transition-colors"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-[#8A8A8A] hover:text-[#1B7A40] transition-colors"
                     aria-label={showRegConfirmPassword ? 'Hide password' : 'Show password'}>
                     {showRegConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>

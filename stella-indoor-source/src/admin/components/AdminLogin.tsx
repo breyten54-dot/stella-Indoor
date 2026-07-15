@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
 
 interface Props {
-  onLogin: (email: string, password: string) => Promise<boolean>;
+  onLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export function AdminLogin({ onLogin }: Props) {
@@ -20,9 +20,9 @@ export function AdminLogin({ onLogin }: Props) {
     }
     setLoading(true);
     setError('');
-    const success = await onLogin(email, password);
-    if (!success) {
-      setError('Invalid admin credentials');
+    const result = await onLogin(email, password);
+    if (!result.success) {
+      setError(result.error || 'Invalid admin credentials');
       setPassword('');
     }
     setLoading(false);
