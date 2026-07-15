@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { useBodyScrollLock } from '@/admin/hooks/useBodyScrollLock';
-import { ModalPortal } from '@/admin/components/ModalPortal';
 import {
   ChevronLeft, ChevronRight,
   LayoutGrid, Columns3, Calendar as CalIcon, Repeat,
-  Ban, Clock, Lock, Phone, User, FileText, X
 } from 'lucide-react';
 import type { BookingRecord } from '@/types/booking';
 import { blockAppliesToDate, type BlockedSlot } from '../hooks/useBlockedSlots';
 import { BookingDetailModal } from '../components/BookingDetailModal';
+import { BlockDetailModal } from '../components/BlockDetailModal';
 
 type CalendarView = 'day' | 'week' | 'month';
 
@@ -27,12 +26,7 @@ const COURTS = [
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 8);
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-function jsDayToIndex(jsDay: number): number {
-  return jsDay === 0 ? 6 : jsDay - 1;
-}
 
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(':').map(Number);
@@ -199,6 +193,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<BlockedSlot | null>(null);
+  const [selectedBlockDate, setSelectedBlockDate] = useState<string>('');
   useBodyScrollLock(selectedBooking !== null || selectedBlock !== null);
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -259,7 +254,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
               getEntriesForSlot(currentDateStr, hour, COURTS[colIndex].id, bookings, blockedSlots)
             }
             onBookingClick={setSelectedBooking}
-            onBlockClick={setSelectedBlock}
+            onBlockClick={(block) => { setSelectedBlock(block); setSelectedBlockDate(currentDateStr); }}
           />
         </div>
 
@@ -274,7 +269,12 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
 
         {/* Block Detail Modal */}
         {selectedBlock && (
-          <BlockDetailModal block={selectedBlock} onClose={() => setSelectedBlock(null)} />
+          <BlockDetailModal
+            block={selectedBlock}
+            viewDate={selectedBlockDate || currentDateStr}
+            bookings={bookings}
+            onClose={() => { setSelectedBlock(null); setSelectedBlockDate(''); }}
+          />
         )}
       </div>
     );
@@ -367,7 +367,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
                               return (
                                 <div
                                   key={ei}
-                                  onClick={() => setSelectedBlock(block)}
+                                  onClick={() => { setSelectedBlock(block); setSelectedBlockDate(dateStr); }}
                                   className={`text-[8px] px-1 py-0.5 rounded ${colors} truncate font-bold cursor-pointer hover:opacity-80 transition-opacity`}
                                 >
                                   {court?.name?.replace('Multipurpose ', 'M')}: {block.type === 'block-booking' ? 'Block' : block.type === 'closed' ? 'Closed' : 'Maint'}
@@ -401,7 +401,12 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
 
         {/* Block Detail Modal */}
         {selectedBlock && (
-          <BlockDetailModal block={selectedBlock} onClose={() => setSelectedBlock(null)} />
+          <BlockDetailModal
+            block={selectedBlock}
+            viewDate={selectedBlockDate || currentDateStr}
+            bookings={bookings}
+            onClose={() => { setSelectedBlock(null); setSelectedBlockDate(''); }}
+          />
         )}
       </div>
     );
@@ -562,142 +567,14 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
 
       {/* Block Detail Modal */}
       {selectedBlock && (
-        <BlockDetailModal block={selectedBlock} onClose={() => setSelectedBlock(null)} />
+        <BlockDetailModal
+          block={selectedBlock}
+          viewDate={selectedBlockDate || currentDateStr}
+          bookings={bookings}
+          onClose={() => { setSelectedBlock(null); setSelectedBlockDate(''); }}
+        />
       )}
     </div>
-  );
-}
-
-// ============================================
-// BLOCK DETAIL MODAL (shared)
-// ============================================
-function BlockDetailModal({ block, onClose }: { block: BlockedSlot; onClose: () => void }) {
-  return (
-    <ModalPortal>
-      <div className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed top-[50%] left-[50%] z-[9999] translate-x-[-50%] translate-y-[-50%] w-full max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85vh] overflow-y-auto">
-        <div className="bg-[#13182b] rounded-2xl border border-[#1e293b] shadow-2xl">
-          {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b border-[#1e293b]">
-            <h3 className="text-base font-bold text-white">
-              {block.type === 'block-booking' ? 'Block Booking Details' : block.type === 'closed' ? 'Closed Slot Details' : 'Maintenance Details'}
-            </h3>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg bg-[#1e293b] flex items-center justify-center text-[#64748b] hover:text-white hover:bg-[#334155] transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="p-5 space-y-4">
-            {/* Type Badge */}
-            <div className="flex items-center gap-2">
-              {block.type === 'block-booking' && <Lock className="w-4 h-4 text-amber-400" />}
-              {block.type === 'closed' && <Ban className="w-4 h-4 text-red-400" />}
-              {block.type === 'maintenance' && <FileText className="w-4 h-4 text-orange-400" />}
-              <span className={`text-xs font-bold ${
-                block.type === 'block-booking' ? 'text-amber-400' : block.type === 'closed' ? 'text-red-400' : 'text-orange-400'
-              }`}>
-                {block.type === 'block-booking' ? 'Block Booking' : block.type === 'closed' ? 'Closed' : 'Maintenance'}
-              </span>
-            </div>
-
-            {/* Client Name (block bookings only) */}
-            {block.clientName && (
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-[#7ED321]" />
-                </div>
-                <div>
-                  <p className="text-[#64748b] text-xs">Client Name</p>
-                  <p className="text-white font-semibold">{block.clientName}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Contact Number */}
-            {block.clientPhone && (
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <Phone className="w-5 h-5 text-[#7ED321]" />
-                </div>
-                <div>
-                  <p className="text-[#64748b] text-xs">Contact Number</p>
-                  <p className="text-white font-semibold">{block.clientPhone}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Court & Time */}
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                <Clock className="w-5 h-5 text-[#7ED321]" />
-              </div>
-              <div>
-                <p className="text-[#64748b] text-xs">Court & Time</p>
-                <p className="text-white font-semibold">{block.courtName}</p>
-                <p className="text-[#94a3b8] text-sm">{block.startTime} - {block.endTime}</p>
-              </div>
-            </div>
-
-            {/* Day / Schedule */}
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                <CalIcon className="w-5 h-5 text-[#7ED321]" />
-              </div>
-              <div>
-                <p className="text-[#64748b] text-xs">Schedule</p>
-                {block.exactDates && block.exactDates.length > 0 ? (
-                  <p className="text-white font-semibold">Exact dates: {block.exactDates.join(', ')}</p>
-                ) : block.isRecurring ? (
-                  <p className="text-white font-semibold">
-                    {DAYS[jsDayToIndex(block.dayOfWeek ?? new Date(block.startDate).getDay())]}s
-                    <span className="text-[#64748b] text-xs ml-1">
-                      (every {block.intervalWeeks === 1 || !block.intervalWeeks ? 'week' : `${block.intervalWeeks} weeks`})
-                    </span>
-                  </p>
-                ) : (
-                  <p className="text-white font-semibold">{block.startDate}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Date Range */}
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                <CalIcon className="w-5 h-5 text-[#7ED321]" />
-              </div>
-              <div>
-                <p className="text-[#64748b] text-xs">Date Range</p>
-                <p className="text-white font-semibold">{block.startDate} {block.endDate ? `→ ${block.endDate}` : '→ Indefinite'}</p>
-              </div>
-            </div>
-
-            {/* Reason/Notes */}
-            {block.reason && (
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <FileText className="w-5 h-5 text-[#7ED321]" />
-                </div>
-                <div>
-                  <p className="text-[#64748b] text-xs">Notes</p>
-                  <p className="text-white text-sm">{block.reason}</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Close Button */}
-          <div className="p-5 border-t border-[#1e293b]">
-            <button
-              onClick={onClose}
-              className="w-full h-11 rounded-xl bg-[#1e293b] text-[#94a3b8] font-bold text-sm hover:bg-[#334155] hover:text-white transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    </ModalPortal>
   );
 }
 

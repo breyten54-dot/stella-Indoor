@@ -103,10 +103,29 @@ service cloud.firestore {
       allow read, delete: if isAdmin();
     }
 
+    // Client push subscriptions: users manage only their own subscription documents.
+    // The document ID may be either the email or a hash; the owning email is stored in userEmail.
+    match /clientSubscriptions/{id} {
+      allow create, update: if isSignedIn()
+        && request.resource.data.keys().hasAll(['endpoint', 'keys', 'userEmail'])
+        && isOwner(request.resource.data.userEmail);
+      allow read, delete: if isSignedIn() && isOwner(resource.data.userEmail);
+    }
+
+    // Release notification deduplication markers: written by the Cloud Function only.
+    match /releaseNotifications/{id} {
+      allow read, write: if isAdmin();
+    }
+
     // Blocked slots: admins write; authenticated users read for availability checks
     match /blockedSlots/{id} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();
+    }
+
+    // Block payment notes: admin-only metadata attached to blocked slots.
+    match /blockNotes/{blockId} {
+      allow read, write: if isAdmin();
     }
 
     // Clips and clip of the week: public read; admins write

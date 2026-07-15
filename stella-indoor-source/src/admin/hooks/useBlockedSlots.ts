@@ -23,6 +23,7 @@ export interface BlockedSlot {
   intervalWeeks?: number; // 1 = weekly, 2 = bi-weekly, etc. (default 1)
   exactDates?: string[]; // when set, block only applies on these specific YYYY-MM-DD dates
   overrides?: Record<string, boolean>; // per-date override: true = blocked, false = open
+  releasedDates?: string[]; // dates this recurring block has been released for booking
   createdAt: number;
   createdBy: string;
   // Computed: which day of week (0-6) for recurring
@@ -43,12 +44,16 @@ const MS_PER_WEEK = 7 * MS_PER_DAY;
  * 4. One-time rule
  */
 export function blockAppliesToDate(
-  block: Pick<BlockedSlot, 'startDate' | 'endDate' | 'isRecurring' | 'dayOfWeek' | 'intervalWeeks' | 'exactDates' | 'overrides'>,
+  block: Pick<BlockedSlot, 'startDate' | 'endDate' | 'isRecurring' | 'dayOfWeek' | 'intervalWeeks' | 'exactDates' | 'overrides' | 'releasedDates'>,
   date: string
 ): boolean {
   const overrides = block.overrides || {};
   if (overrides[date] !== undefined) {
     return overrides[date];
+  }
+
+  if (block.releasedDates?.includes(date)) {
+    return false;
   }
 
   if (block.exactDates && block.exactDates.length > 0) {
@@ -98,6 +103,7 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
     overrides: d.overrides && typeof d.overrides === 'object'
       ? (d.overrides as Record<string, boolean>)
       : undefined,
+    releasedDates: Array.isArray(d.releasedDates) ? (d.releasedDates as string[]) : undefined,
     createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toMillis() : (d.createdAt as number) || Date.now(),
     createdBy: (d.createdBy as string) || 'admin',
     dayOfWeek: (d.dayOfWeek as number) ?? undefined,

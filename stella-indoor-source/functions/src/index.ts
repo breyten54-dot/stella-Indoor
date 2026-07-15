@@ -184,6 +184,216 @@ export const unsubscribeAdmin = onRequest({ region: 'europe-west1', cors: true }
 });
 
 // ============================================================================
+// Client push notifications (mirror of the admin push stack)
+// ============================================================================
+
+async function sendPushToAllClients(payload: Record<string, string>, options: webpush.RequestOptions = {}) {
+  const subsSnapshot = await db.collection('clientSubscriptions').get();
+  if (subsSnapshot.empty) { console.log('[client-push] No subscriptions'); return; }
+  console.log(`[client-push] Sending to ${subsSnapshot.size} subscription(s)`);
+
+  const successIds: string[] = [];
+  const failedDocs: { id: string; statusCode?: number; failures: number }[] = [];
+
+  const results = await Promise.allSettled(
+    subsSnapshot.docs.map(async (doc) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: doc.data().endpoint, keys: doc.data().keys },
+          JSON.stringify(payload),
+          { TTL: PUSH_TTL_SECONDS, urgency: 'high', ...options }
+        );
+        successIds.push(doc.id);
+        return { ok: true, id: doc.id };
+      } catch (err: unknown) {
+        const statusCode = (err as { statusCode?: number }).statusCode;
+        const message = (err as { message?: string }).message || String(err);
+        console.warn(`[client-push] Failed for ${doc.id}: ${statusCode || 'unknown'} ${message}`);
+        const priorFailures = (doc.data().failures || 0) as number;
+        failedDocs.push({ id: doc.id, statusCode, failures: priorFailures + 1 });
+        return { ok: false, id: doc.id, statusCode };
+      }
+    })
+  );
+
+  const batch = db.batch();
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  for (const id of successIds) {
+    batch.update(db.collection('clientSubscriptions').doc(id), { lastSuccess: now, failures: 0, updatedAt: now });
+  }
+  for (const failed of failedDocs) {
+    const permanentFailure = failed.statusCode === 410 || failed.statusCode === 404;
+    if (permanentFailure || failed.failures >= MAX_PUSH_FAILURES) {
+      batch.delete(db.collection('clientSubscriptions').doc(failed.id));
+    } else {
+      batch.update(db.collection('clientSubscriptions').doc(failed.id), { lastFailure: now, failures: failed.failures, updatedAt: now });
+    }
+  }
+  await batch.commit();
+
+  const okCount = results.filter(r => r.status === 'fulfilled' && (r.value as { ok: boolean }).ok).length;
+  const removedCount = failedDocs.filter(f => {
+    const permanentFailure = f.statusCode === 410 || f.statusCode === 404;
+    return permanentFailure || f.failures >= MAX_PUSH_FAILURES;
+  }).length;
+  console.log(`[client-push] ${okCount} succeeded, ${failedDocs.length} failed, ${removedCount} removed`);
+}
+
+export const subscribeClient = onRequest({ region: 'europe-west1', cors: true }, async (req, res) => {
+  console.log(`[subscribeClient] ${req.method} from ${req.headers.origin || 'unknown origin'}`);
+  if (req.method !== 'POST') { res.status(405).send('Method not allowed'); return; }
+  const { endpoint, keys, userEmail, deviceInfo } = req.body;
+  if (!endpoint || !keys?.p256dh || !keys?.auth || !userEmail) {
+    console.warn(`[subscribeClient] REJECTED 400 — endpoint:${!!endpoint} p256dh:${!!keys?.p256dh} auth:${!!keys?.auth} userEmail:${!!userEmail}`);
+    res.status(400).json({ error: 'Invalid data' });
+    return;
+  }
+  const subId = Buffer.from(endpoint).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 50);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await db.collection('clientSubscriptions').doc(subId).set({
+    endpoint,
+    keys: { p256dh: keys.p256dh, auth: keys.auth },
+    userEmail: String(userEmail).toLowerCase().trim(),
+    deviceInfo: deviceInfo || 'Unknown',
+    failures: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  res.status(200).json({ success: true, message: 'Subscribed' });
+});
+
+export const updateClientPushSubscription = onRequest({ region: 'europe-west1', cors: true }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).send('Method not allowed'); return; }
+  const { oldEndpoint, newEndpoint, keys, userEmail, deviceInfo } = req.body;
+  if (!oldEndpoint || !newEndpoint || !keys?.p256dh || !keys?.auth || !userEmail) {
+    res.status(400).json({ success: false, error: 'Invalid data' });
+    return;
+  }
+  try {
+    const oldSubId = Buffer.from(oldEndpoint).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 50);
+    const newSubId = Buffer.from(newEndpoint).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 50);
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+    batch.delete(db.collection('clientSubscriptions').doc(oldSubId));
+    batch.set(db.collection('clientSubscriptions').doc(newSubId), {
+      endpoint: newEndpoint,
+      keys: { p256dh: keys.p256dh, auth: keys.auth },
+      userEmail: String(userEmail).toLowerCase().trim(),
+      deviceInfo: deviceInfo || 'Unknown',
+      failures: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await batch.commit();
+    res.status(200).json({ success: true, message: 'Subscription updated' });
+  } catch (err: unknown) {
+    console.error('[updateClientPushSubscription] Error:', getErrorMessage(err));
+    res.status(500).json({ success: false, error: getErrorMessage(err) });
+  }
+});
+
+export const unsubscribeClient = onRequest({ region: 'europe-west1', cors: true }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).send('Method not allowed'); return; }
+  const { endpoint } = req.body;
+  if (!endpoint) { res.status(400).json({ error: 'Endpoint required' }); return; }
+  const subId = Buffer.from(endpoint).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 50);
+  await db.collection('clientSubscriptions').doc(subId).delete();
+  res.status(200).json({ success: true, message: 'Unsubscribed' });
+});
+
+// ============================================================================
+// Notify clients when a single occurrence of a recurring block is released
+// ============================================================================
+
+export const notifySlotReleased = onDocumentUpdated({ region: 'europe-west1', minInstances: 0, document: 'blockedSlots/{blockId}' }, async (event) => {
+  const data = event.data;
+  const before = data?.before?.data();
+  const after = data?.after?.data();
+  if (!data || !before || !after) return;
+
+  const beforeReleased: string[] = Array.isArray(before.releasedDates) ? before.releasedDates : [];
+  const afterReleased: string[] = Array.isArray(after.releasedDates) ? after.releasedDates : [];
+  const added = afterReleased.filter((d) => !beforeReleased.includes(d));
+  if (added.length === 0) return;
+
+  const blockId = data.after.id;
+  const courtName = (after.courtName as string) || 'Court';
+  const startTime = (after.startTime as string) || '';
+  const endTime = (after.endTime as string) || '';
+
+  const formatReleaseDate = (dateStr: string): { weekday: string; dayMon: string } => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return {
+      weekday: date.toLocaleDateString('en-ZA', { weekday: 'long' }),
+      dayMon: date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }),
+    };
+  };
+
+  for (const dateStr of added) {
+    const markerId = `${blockId}_${dateStr}`;
+
+    try {
+      // Deduplicate via transaction
+      const alreadySent = await db.runTransaction(async (tx) => {
+        const markerRef = db.collection('releaseNotifications').doc(markerId);
+        const marker = await tx.get(markerRef);
+        if (marker.exists) return true;
+        tx.set(markerRef, { blockId, date: dateStr, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+        return false;
+      });
+
+      if (alreadySent) {
+        console.log(`[notifySlotReleased] ${markerId} already notified`);
+        continue;
+      }
+
+      const { weekday, dayMon } = formatReleaseDate(dateStr);
+      const body = `${courtName} · ${weekday} ${dayMon} · ${startTime}–${endTime} — tap to book.`;
+
+      // Push to all subscribed client devices
+      await sendPushToAllClients({
+        title: 'Slot just opened up! 🎾',
+        body,
+        tag: `release-${markerId}`,
+        url: 'https://stella-indoor.web.app',
+        icon: '/logo-original.jpg',
+        badge: '/badge-admin.png',
+        requireInteraction: 'false',
+      });
+
+      // In-app notification docs for all known client users
+      const usersSnap = await db.collection('users').select('email').get();
+      const now = Date.now();
+      const batch = db.batch();
+      usersSnap.docs.forEach((u) => {
+        const email = (u.data().email as string)?.toLowerCase().trim();
+        if (!email) return;
+        batch.set(db.collection('notifications').doc(`release-${markerId}-${email.replace(/[^a-zA-Z0-9]/g, '_')}`), {
+          type: 'slot-released',
+          userEmail: email,
+          bookingId: '',
+          courtName,
+          date: dateStr,
+          startTime,
+          title: 'Slot just opened up! 🎾',
+          message: body,
+          read: false,
+          shown: false,
+          createdAt: now,
+        });
+      });
+      await batch.commit();
+
+      console.log(`[notifySlotReleased] Notified for ${markerId}`);
+    } catch (err) {
+      console.error(`[notifySlotReleased] Error for ${markerId}:`, getErrorMessage(err));
+    }
+  }
+});
+
+// ============================================================================
 // Server-side notification lifecycle.
 // Firestore rules allow only admins to CREATE notification/scheduledEmail
 // docs, so all creation happens here (Admin SDK bypasses rules). The client
@@ -566,11 +776,13 @@ function blockAppliesToDate(
     intervalWeeks?: number;
     exactDates?: string[];
     overrides?: Record<string, boolean>;
+    releasedDates?: string[];
   },
   date: string
 ): boolean {
   const overrides = block.overrides || {};
   if (overrides[date] !== undefined) return overrides[date];
+  if (block.releasedDates?.includes(date)) return false;
 
   if (block.exactDates && block.exactDates.length > 0) {
     return block.exactDates.includes(date);
