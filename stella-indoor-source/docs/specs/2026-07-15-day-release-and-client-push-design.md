@@ -108,6 +108,27 @@ clients have no push subscriptions — verified 2026-07-15).
 
 ---
 
+## Part 4 — Block payment note (admin-only viewing reference; added 2026-07-15, user request)
+
+**Purpose:** whoever views a block booking on the Calendar can see how that club pays. An
+editable reference note — NOT an accounting system; all values maintained by hand.
+
+- **Storage:** NEW `blockNotes/{blockId}` collection — deliberately NOT fields on `blockedSlots`,
+  because the client app reads that collection for availability and payment terms must not be
+  client-readable. Fields:
+  `paymentCadence: 'on-the-day' | 'monthly'` · `rate: number` (ZAR) · `paidToDate: number` (ZAR)
+  · `updatedAt: number` · `updatedBy: string` (admin email).
+- **Rules:** only authenticated admins read/write `blockNotes` (match the existing admin-gating
+  pattern in `firestore.rules`). Emulator/rules test must prove a client CANNOT read it.
+- **UI:** in `BlockDetailModal` (Calendar), a "Payment note" card for ANY block (recurring or
+  one-off):
+  - View mode: `Pays monthly · R750 · R4,500 paid to date` + "updated 15 Jul". Empty state:
+    "No payment note yet — add one."
+  - Edit: cadence toggle (On the day / Monthly) + two currency inputs, Save/Cancel. All three
+    parts alterable at any time.
+  - Display formatting: `R` prefix, thousands separators; store plain numbers.
+- New hook `src/admin/hooks/useBlockNotes.ts` (get + upsert by blockId).
+
 ## Out of scope (explicitly)
 - Migrating reminders/cancellation notices to client push (they stay Firestore/page-based; future unit).
 - Any Slot Control page changes (feature lives on the Calendar).
@@ -126,6 +147,9 @@ clients have no push subscriptions — verified 2026-07-15).
 - [ ] `npm run build` clean (tsc, dual-site); admin push (`sendPushToAllAdmins` consumers) unaffected.
 - [ ] New E2E script in `Stella Project\testing-tools\` (self-cleaning, SW cache-busting — follow
       `slot-anchor-e2e.js` patterns) covering the release/undo/availability loop.
+- [ ] Payment note: view→edit→save round-trip persists to `blockNotes/{blockId}` and re-renders
+      formatted (cadence label + R amounts + updated date).
+- [ ] Rules assertion: a non-admin client CANNOT read `blockNotes` (emulator rules test).
 
 ## Testing notes for the builder
 - Local: Firebase emulator for the function trigger + dedupe transaction.

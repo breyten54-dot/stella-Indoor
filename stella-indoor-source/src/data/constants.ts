@@ -34,7 +34,7 @@ export const ADDON_ITEMS = [
   },
   {
     id: 'bibs' as const,
-    name: 'Bibs (Set of 10)',
+    name: 'Bibs (Set of 5)',
     description: 'Team training bibs, assorted colors',
     price: 10,
     image: '/addon-bibs.jpg',
