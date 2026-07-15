@@ -194,6 +194,11 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<BlockedSlot | null>(null);
   const [selectedBlockDate, setSelectedBlockDate] = useState<string>('');
+  // selectedBlock is a click-time snapshot; derive the live doc so edits (release/undo)
+  // re-render the modal immediately without closing and reopening it.
+  const liveSelectedBlock = selectedBlock
+    ? (blockedSlots.find(b => b.id === selectedBlock.id) ?? selectedBlock)
+    : null;
   useBodyScrollLock(selectedBooking !== null || selectedBlock !== null);
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -270,7 +275,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
         {/* Block Detail Modal */}
         {selectedBlock && (
           <BlockDetailModal
-            block={selectedBlock}
+            block={liveSelectedBlock!}
             viewDate={selectedBlockDate || currentDateStr}
             bookings={bookings}
             onClose={() => { setSelectedBlock(null); setSelectedBlockDate(''); }}
@@ -402,7 +407,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
         {/* Block Detail Modal */}
         {selectedBlock && (
           <BlockDetailModal
-            block={selectedBlock}
+            block={liveSelectedBlock!}
             viewDate={selectedBlockDate || currentDateStr}
             bookings={bookings}
             onClose={() => { setSelectedBlock(null); setSelectedBlockDate(''); }}
@@ -568,7 +573,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
       {/* Block Detail Modal */}
       {selectedBlock && (
         <BlockDetailModal
-          block={selectedBlock}
+          block={liveSelectedBlock!}
           viewDate={selectedBlockDate || currentDateStr}
           bookings={bookings}
           onClose={() => { setSelectedBlock(null); setSelectedBlockDate(''); }}
