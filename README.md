@@ -56,7 +56,7 @@ The app now uses **Firebase Authentication** for both clients and admins.
 ### 2. Create the first admin user
 1. In Firebase Console → **Authentication** → **Users**.
 2. Click **Add user**.
-3. Enter the admin email (must match `VITE_ADMIN_EMAIL` in your `.env`) and a strong password.
+3. Enter the admin email and a strong password.
 4. Click **Add user**.
 
 ### 3. Mark the user as an admin in Firestore
@@ -77,6 +77,6 @@ firebase deploy --only firestore:rules
 
 - **Central secrets file:** All API keys, access credentials, and sensitive config live in `stella-indoor-source/.env.secrets`. It is gitignored and must never be committed. Copy values from it into `stella-indoor-source/.env` (build-time) and `stella-indoor-source/functions/.env` (runtime) as needed.
 - Firebase service-account keys were removed from this directory. If you previously shared this folder, **rotate the Firebase service-account key** in the Firebase Console.
-- The admin email is read from `VITE_ADMIN_EMAIL` at build time. It must match the email added in Firebase Authentication and the `admins` collection document ID.
+- Admin access is determined by the `/admins` collection in Firestore. A signed-in user whose email matches a document ID in that collection is treated as an admin by both the app and the Firestore security rules.
 - Firebase Functions VAPID keys are read from runtime environment variables (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`). Generate fresh keys and set them before deploying functions.
 - Firestore security rules now enforce authentication and ownership. Make sure you deploy the rules after enabling Firebase Authentication.
