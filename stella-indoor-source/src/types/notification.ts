@@ -2,7 +2,8 @@ export type NotificationType =
   | 'admin-cancelled'
   | 'reminder-1h'
   | 'reminder-30m'
-  | 'reminder-5m';
+  | 'reminder-5m'
+  | 'slot-released';
 
 export interface NotificationRecord {
   id: string;

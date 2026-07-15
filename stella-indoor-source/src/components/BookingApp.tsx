@@ -25,6 +25,7 @@ import { useBackButton, pushWizardStep } from '@/hooks/useBackButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile } from '@/hooks/useFirestoreUsers';
 import { DEMO_MODE } from '@/lib/demo';
+import { subscribeToPush } from '@/lib/clientPush';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([
@@ -98,6 +99,14 @@ export function BookingApp() {
       setShowHighlights(true);
     }
   }, [auth.isLoggedIn, sharedClipSlot, showHighlights, setShowHighlights]);
+
+  // Subscribe/re-validate client Web Push on login and app open.
+  useEffect(() => {
+    if (DEMO_MODE || !auth.isLoggedIn || !auth.user?.email) return;
+    subscribeToPush(auth.user.email).catch((err) => {
+      console.warn('[BookingApp] push subscribe failed:', err);
+    });
+  }, [auth.isLoggedIn, auth.user?.email]);
 
   const [selectedDuration, setSelectedDurationState] = useState<1 | 1.5 | 2>(1);
   const [bookingRef, setBookingRef] = useState('');
