@@ -58,3 +58,7 @@ stella-admin-attendance/
 tmp-audit/*.png
 tmp-audit/ad-screenshots/
 .gradle/
+
+# Playwright/Chrome profile dirs (contain auth tokens - NEVER commit)
+testing-tools/profile-panel/
+testing-tools/profile-*/
