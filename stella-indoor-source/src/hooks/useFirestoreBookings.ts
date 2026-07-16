@@ -214,6 +214,9 @@ export async function getBlockedSlotsForCourtAndDate(courtId: string, date: stri
       overrides: d.overrides && typeof d.overrides === 'object'
         ? (d.overrides as Record<string, boolean>)
         : undefined,
+      // Without this field the blockAppliesToDate guard never sees a release and
+      // the client re-blocks slots the admin has opened (fixed 2026-07-16).
+      releasedDates: Array.isArray(d.releasedDates) ? (d.releasedDates as string[]) : undefined,
       createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toMillis() : (d.createdAt as number) || Date.now(),
       createdBy: (d.createdBy as string) || 'admin',
       dayOfWeek: (d.dayOfWeek as number) ?? undefined,
