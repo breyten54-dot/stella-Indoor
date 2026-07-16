@@ -49,7 +49,7 @@ export function ClipRecorder() {
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Video className="w-6 h-6 text-[#7ED321]" />
+          <Video className="w-6 h-6 text-[#818cf8]" />
           Clip Recorder
         </h1>
         <p className="text-sm text-[#8A8A8A] mt-1">
@@ -59,7 +59,7 @@ export function ClipRecorder() {
 
       {/* Toast */}
       {toast && (
-        <div className="mb-4 bg-[#1B7A40] rounded-xl px-4 py-3 flex items-center gap-2 text-white text-sm font-semibold animate-fade-in">
+        <div className="mb-4 bg-[#6366f1] rounded-xl px-4 py-3 flex items-center gap-2 text-white text-sm font-semibold animate-fade-in">
           <Radio className="w-4 h-4 shrink-0" />
           {toast}
         </div>
@@ -75,11 +75,11 @@ export function ClipRecorder() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isRecording ? 'bg-[#E53935]/20' : 'bg-[#1B7A40]/20'}`}>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isRecording ? 'bg-[#E53935]/20' : 'bg-[#6366f1]/20'}`}>
                     {isRecording ? (
                       <CircleStop className="w-6 h-6 text-[#E53935]" />
                     ) : (
-                      <camera.icon className="w-6 h-6 text-[#7ED321]" />
+                      <camera.icon className="w-6 h-6 text-[#818cf8]" />
                     )}
                   </div>
                   <div>
@@ -117,7 +117,7 @@ export function ClipRecorder() {
         <h3 className="text-sm font-bold text-white mb-3">Setup Tips</h3>
         <ul className="space-y-2 text-xs text-[#8A8A8A]">
           <li className="flex items-start gap-2">
-            <Wifi className="w-3.5 h-3.5 text-[#7ED321] shrink-0 mt-0.5" />
+            <Wifi className="w-3.5 h-3.5 text-[#818cf8] shrink-0 mt-0.5" />
             Make sure both Pis are connected to the same WiFi as this admin device
           </li>
           <li className="flex items-start gap-2">

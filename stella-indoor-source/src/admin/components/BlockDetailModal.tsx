@@ -150,8 +150,8 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
             {/* Client Name (block bookings only) */}
             {block.clientName && (
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-[#7ED321]" />
+                <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                  <User className="w-5 h-5 text-[#818cf8]" />
                 </div>
                 <div>
                   <p className="text-[#64748b] text-xs">Client Name</p>
@@ -163,8 +163,8 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
             {/* Contact Number */}
             {block.clientPhone && (
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <Phone className="w-5 h-5 text-[#7ED321]" />
+                <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                  <Phone className="w-5 h-5 text-[#818cf8]" />
                 </div>
                 <div>
                   <p className="text-[#64748b] text-xs">Contact Number</p>
@@ -175,8 +175,8 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
 
             {/* Court & Time */}
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                <Clock className="w-5 h-5 text-[#7ED321]" />
+              <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5 text-[#818cf8]" />
               </div>
               <div>
                 <p className="text-[#64748b] text-xs">Court & Time</p>
@@ -187,8 +187,8 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
 
             {/* Day / Schedule */}
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                <CalIcon className="w-5 h-5 text-[#7ED321]" />
+              <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                <CalIcon className="w-5 h-5 text-[#818cf8]" />
               </div>
               <div>
                 <p className="text-[#64748b] text-xs">Schedule</p>
@@ -209,8 +209,8 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
 
             {/* Date Range */}
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                <CalIcon className="w-5 h-5 text-[#7ED321]" />
+              <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                <CalIcon className="w-5 h-5 text-[#818cf8]" />
               </div>
               <div>
                 <p className="text-[#64748b] text-xs">Date Range</p>
@@ -221,8 +221,8 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
             {/* Reason/Notes */}
             {block.reason && (
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <FileText className="w-5 h-5 text-[#7ED321]" />
+                <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5 text-[#818cf8]" />
                 </div>
                 <div>
                   <p className="text-[#64748b] text-xs">Notes</p>
@@ -234,7 +234,7 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
             {/* Payment note (admin-only) */}
             <div className={`rounded-xl border ${colors.border} ${colors.bg} p-4 space-y-3`}>
               <div className="flex items-center gap-2">
-                <Banknote className="w-4 h-4 text-[#7ED321]" />
+                <Banknote className="w-4 h-4 text-[#818cf8]" />
                 <span className="text-xs font-bold text-white">Payment note</span>
               </div>
 
@@ -357,7 +357,7 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
                   </div>
                 ) : (
                   <>
-                    <div className="rounded-lg bg-[#1B7A40]/10 border border-[#1B7A40]/20 p-3 text-xs text-[#7ED321] text-center">
+                    <div className="rounded-lg bg-[#6366f1]/10 border border-[#6366f1]/20 p-3 text-xs text-[#818cf8] text-center">
                       Released for this day — open to clients
                     </div>
                     <button

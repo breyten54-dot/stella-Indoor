@@ -98,7 +98,7 @@ export function NotificationSetupGuide() {
         <h3 className="text-sm font-bold text-[#94a3b8]">Notification Setup — every alert, step by step</h3>
       </div>
       <p className="text-[11px] text-[#475569] mb-4">
-        Follow these once per device. Steps with a green tick are already done on this device.
+        Follow these once per device. Steps with a checkmark are already done on this device.
       </p>
 
       <div className="flex gap-2 mb-4">
@@ -113,13 +113,13 @@ export function NotificationSetupGuide() {
             <li key={step.title} className="flex items-start gap-3">
               <span
                 className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold mt-0.5 ${
-                  done ? 'bg-[#1B7A40] text-white' : 'bg-[#1e293b] text-[#94a3b8]'
+                  done ? 'bg-[#6366f1] text-white' : 'bg-[#1e293b] text-[#94a3b8]'
                 }`}
               >
                 {done ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </span>
               <div>
-                <p className={`text-xs font-bold ${done ? 'text-[#7ED321]' : 'text-[#cbd5e1]'}`}>
+                <p className={`text-xs font-bold ${done ? 'text-[#818cf8]' : 'text-[#cbd5e1]'}`}>
                   {step.title}
                   {done === false && step.autoCheck && (
                     <span className="ml-2 text-[10px] font-normal text-amber-400">not done on this device</span>

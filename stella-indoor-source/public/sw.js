@@ -72,7 +72,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: payload.icon || '/logo-original.jpg',
-      badge: payload.badge || '/badge-client.png',
+      badge: payload.badge || '/badge-client-v2.png',
       tag: payload.tag || 'stella-indoor',
       data: { url: payload.url },
       vibrate: [300, 100, 300],

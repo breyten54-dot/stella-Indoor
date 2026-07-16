@@ -353,8 +353,8 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
             <div className="p-5 space-y-4">
               {/* Client Name */}
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-[#7ED321]" />
+                <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                  <User className="w-5 h-5 text-[#818cf8]" />
                 </div>
                 <div>
                   <p className="text-[#64748b] text-xs">Client Name</p>
@@ -364,8 +364,8 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
 
               {/* Contact */}
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <Phone className="w-5 h-5 text-[#7ED321]" />
+                <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                  <Phone className="w-5 h-5 text-[#818cf8]" />
                 </div>
                 <div>
                   <p className="text-[#64748b] text-xs">Contact Number</p>
@@ -375,8 +375,8 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
 
               {/* Email */}
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#7ED321]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-[#818cf8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
                 </div>
                 <div>
                   <p className="text-[#64748b] text-xs">Email</p>
@@ -386,8 +386,8 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
 
               {/* Court & Time */}
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  <Clock className="w-5 h-5 text-[#7ED321]" />
+                <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                  <Clock className="w-5 h-5 text-[#818cf8]" />
                 </div>
                 <div>
                   <p className="text-[#64748b] text-xs">Court & Time</p>
@@ -398,8 +398,8 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
 
               {/* Schedule */}
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                  {viewBlock.isRecurring ? <Repeat className="w-5 h-5 text-[#7ED321]" /> : <CalIcon className="w-5 h-5 text-[#7ED321]" />}
+                <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                  {viewBlock.isRecurring ? <Repeat className="w-5 h-5 text-[#818cf8]" /> : <CalIcon className="w-5 h-5 text-[#818cf8]" />}
                 </div>
                 <div>
                   <p className="text-[#64748b] text-xs">Schedule</p>
@@ -419,8 +419,8 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
               {/* Reason/Notes */}
               {viewBlock.reason && (
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#1B7A40]/20 flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5 text-[#7ED321]" />
+                  <div className="w-10 h-10 rounded-xl bg-[#6366f1]/20 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5 text-[#818cf8]" />
                   </div>
                   <div>
                     <p className="text-[#64748b] text-xs">Notes</p>
@@ -457,7 +457,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                 </div>
                 {overrideDate && (
                   <p className="text-[10px] text-[#475569]">
-                    On {overrideDate} this block is currently <span className={blockAppliesToDate(viewBlock, overrideDate) ? 'text-amber-400' : 'text-emerald-400'}>
+                    On {overrideDate} this block is currently <span className={blockAppliesToDate(viewBlock, overrideDate) ? 'text-amber-400' : 'text-[#818cf8]'}>
                       {blockAppliesToDate(viewBlock, overrideDate) ? 'closed' : 'open'}
                     </span>
                   </p>
@@ -467,7 +467,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                     <p className="text-[10px] text-[#64748b]">Saved overrides</p>
                     <div className="flex flex-wrap gap-2">
                       {Object.entries(viewBlock.overrides).map(([date, active]) => (
-                        <span key={date} className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold ${active ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                        <span key={date} className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold ${active ? 'bg-amber-500/10 text-amber-400' : 'bg-[#6366f1]/10 text-[#818cf8]'}`}>
                           {date}: {active ? 'closed' : 'open'}
                           <button
                             type="button"
@@ -493,7 +493,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
             <div className="p-5 border-t border-[#1e293b] flex gap-3">
               <button
                 onClick={() => startEdit(viewBlock)}
-                className="flex-1 h-11 rounded-xl bg-[#1B7A40] text-white font-bold text-sm hover:bg-[#145C32] transition-colors flex items-center justify-center gap-2"
+                className="flex-1 h-11 rounded-xl bg-[#6366f1] text-white font-bold text-sm hover:bg-[#4f46e5] transition-colors flex items-center justify-center gap-2"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Edit
@@ -535,7 +535,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                   type="text"
                   value={editForm.clientName || ''}
                   onChange={e => setEditForm({ ...editForm, clientName: e.target.value })}
-                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm placeholder-[#475569] focus:border-[#1B7A40] focus:outline-none transition-colors"
+                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm placeholder-[#475569] focus:border-[#6366f1] focus:outline-none transition-colors"
                 />
               </div>
 
@@ -546,7 +546,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                   type="tel"
                   value={editForm.clientPhone || ''}
                   onChange={e => setEditForm({ ...editForm, clientPhone: e.target.value })}
-                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm placeholder-[#475569] focus:border-[#1B7A40] focus:outline-none transition-colors"
+                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm placeholder-[#475569] focus:border-[#6366f1] focus:outline-none transition-colors"
                 />
               </div>
 
@@ -557,7 +557,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                   type="email"
                   value={editForm.clientEmail || ''}
                   onChange={e => setEditForm({ ...editForm, clientEmail: e.target.value })}
-                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm placeholder-[#475569] focus:border-[#1B7A40] focus:outline-none transition-colors"
+                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm placeholder-[#475569] focus:border-[#6366f1] focus:outline-none transition-colors"
                 />
               </div>
 
@@ -567,7 +567,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                 <select
                   value={editForm.courtId || ''}
                   onChange={e => setEditForm({ ...editForm, courtId: e.target.value })}
-                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors appearance-none"
+                  className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#6366f1] focus:outline-none transition-colors appearance-none"
                 >
                   {COURTS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -581,7 +581,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                     type="time"
                     value={editForm.startTime || ''}
                     onChange={e => setEditForm({ ...editForm, startTime: e.target.value })}
-                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors"
+                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#6366f1] focus:outline-none transition-colors"
                   />
                 </div>
                 <div>
@@ -590,7 +590,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                     type="time"
                     value={editForm.endTime || ''}
                     onChange={e => setEditForm({ ...editForm, endTime: e.target.value })}
-                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors"
+                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#6366f1] focus:outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -626,7 +626,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                       type="date"
                       value={editForm.endDate || ''}
                       onChange={e => setEditForm({ ...editForm, endDate: e.target.value || null })}
-                      className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors"
+                      className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#6366f1] focus:outline-none transition-colors"
                     />
                   </div>
                 </>
@@ -637,7 +637,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                     type="date"
                     value={editForm.startDate || ''}
                     onChange={e => setEditForm({ ...editForm, startDate: e.target.value })}
-                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors"
+                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#6366f1] focus:outline-none transition-colors"
                   />
                 </div>
               )}
@@ -649,7 +649,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                   <select
                     value={editForm.intervalWeeks || 1}
                     onChange={e => setEditForm({ ...editForm, intervalWeeks: parseInt(e.target.value) })}
-                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#1B7A40] focus:outline-none transition-colors appearance-none"
+                    className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#6366f1] focus:outline-none transition-colors appearance-none"
                   >
                     {Array.from({ length: 8 }, (_, i) => i + 1).map(n => (
                       <option key={n} value={n}>{n} week{n === 1 ? '' : 's'}</option>
@@ -665,7 +665,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                   value={editForm.reason || ''}
                   onChange={e => setEditForm({ ...editForm, reason: e.target.value })}
                   rows={3}
-                  className="w-full bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 py-3 text-white text-sm placeholder-[#475569] focus:border-[#1B7A40] focus:outline-none transition-colors resize-none"
+                  className="w-full bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 py-3 text-white text-sm placeholder-[#475569] focus:border-[#6366f1] focus:outline-none transition-colors resize-none"
                 />
               </div>
             </div>
@@ -674,7 +674,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
             <div className="p-5 border-t border-[#1e293b] flex gap-3">
               <button
                 onClick={saveEdit}
-                className="flex-1 h-11 rounded-xl bg-[#1B7A40] text-white font-bold text-sm hover:bg-[#145C32] transition-colors flex items-center justify-center gap-2"
+                className="flex-1 h-11 rounded-xl bg-[#6366f1] text-white font-bold text-sm hover:bg-[#4f46e5] transition-colors flex items-center justify-center gap-2"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                 Save Changes
@@ -758,7 +758,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                   <div className="pt-1 flex justify-end gap-2">
                     <button
                       onClick={() => startEdit(block)}
-                      className="h-7 px-3 rounded-lg bg-[#1B7A40]/10 text-[#7ED321] hover:bg-[#1B7A40]/20 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                      className="h-7 px-3 rounded-lg bg-[#6366f1]/10 text-[#818cf8] hover:bg-[#6366f1]/20 text-[10px] font-bold flex items-center gap-1 transition-colors"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       Edit

@@ -3,9 +3,13 @@ import { RefreshCw, X } from 'lucide-react';
 
 interface ServiceWorkerUpdaterProps {
   swPath: string;
+  variant?: 'client' | 'admin';
 }
 
-export function ServiceWorkerUpdater({ swPath }: ServiceWorkerUpdaterProps) {
+export function ServiceWorkerUpdater({ swPath, variant = 'client' }: ServiceWorkerUpdaterProps) {
+  const isAdmin = variant === 'admin';
+  const bg = isAdmin ? 'bg-[#6366f1]' : 'bg-[#1B7A40]';
+  const buttonText = isAdmin ? 'text-[#6366f1]' : 'text-[#1B7A40]';
   const [show, setShow] = useState(false);
   const regRef = useRef<ServiceWorkerRegistration | null>(null);
 
@@ -81,7 +85,7 @@ export function ServiceWorkerUpdater({ swPath }: ServiceWorkerUpdaterProps) {
 
   return (
     <div className="fixed bottom-4 left-4 right-4 z-[60] sm:left-auto sm:right-4 sm:w-96 animate-fade-in">
-      <div className="bg-[#6366f1] rounded-2xl shadow-xl shadow-black/30 p-4 flex items-start gap-3">
+      <div className={`${bg} rounded-2xl shadow-xl shadow-black/30 p-4 flex items-start gap-3`}>
         <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 mt-0.5">
           <RefreshCw className="w-5 h-5 text-white" />
         </div>
@@ -93,7 +97,7 @@ export function ServiceWorkerUpdater({ swPath }: ServiceWorkerUpdaterProps) {
           <div className="flex items-center gap-2 mt-3">
             <button
               onClick={handleUpdate}
-              className="h-9 px-4 rounded-lg bg-white text-[#6366f1] text-xs font-bold flex items-center gap-1.5 hover:bg-white/90 transition-colors"
+              className={`h-9 px-4 rounded-lg bg-white ${buttonText} text-xs font-bold flex items-center gap-1.5 hover:bg-white/90 transition-colors`}
             >
               <RefreshCw className="w-3.5 h-3.5" /> Update Now
             </button>

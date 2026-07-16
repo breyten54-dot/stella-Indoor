@@ -27,7 +27,7 @@ export default function App() {
   // removed to prevent double-sends.
 
   // Auto-detect and prompt for service worker updates
-  const updater = <ServiceWorkerUpdater swPath="/sw-admin.js" />;
+  const updater = <ServiceWorkerUpdater swPath="/sw-admin.js" variant="admin" />;
 
   const { isAdmin, user, login, logout, loading: authLoading } = useAdminAuth();
 

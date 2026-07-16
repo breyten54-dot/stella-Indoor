@@ -26,7 +26,7 @@ export function InstallButton({ variant = 'icon', className = '' }: InstallButto
         <Download className={variant === 'pill' ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
         {variant === 'pill' && <span>Install App</span>}
       </button>
-      <InstallModal open={showModal} onClose={() => setShowModal(false)} />
+      <InstallModal open={showModal} onClose={() => setShowModal(false)} variant="client" />
     </>
   );
 }
