@@ -25,9 +25,13 @@ clients have no push subscriptions — verified 2026-07-15).
 ### Availability logic (single choke point)
 - `blockAppliesToDate(block, date)` in `src/admin/hooks/useBlockedSlots.ts` gains one condition:
   returns `false` when `block.releasedDates?.includes(dateStr)`.
-- **Verified 2026-07-15:** the client app imports this SAME function
-  (`src/hooks/useFirestoreBookings.ts:15` → `import { blockAppliesToDate } from '@/admin/hooks/useBlockedSlots'`,
-  applied at line 221) — so the one condition covers both apps automatically. No client-side duplication exists.
+- ~~**Verified 2026-07-15:** the client app imports this SAME function … No client-side duplication exists.~~
+  **CORRECTION 2026-07-16:** that claim was wrong — the FUNCTION is shared, but the client has its
+  own `blockedSlots` doc-MAPPER (`useFirestoreBookings.ts` `getBlockedSlotsForCourtAndDate`), which
+  dropped `releasedDates`, so released slots stayed closed in the client UI (found by user device
+  test; fixed `a2cc6d0`). There are THREE deserializers of this collection: admin hook, client
+  hook, and the server function — a model-field change must update ALL of them
+  (BUILD-STANDARDS #19–20).
 - Consequence (by construction): released day is bookable everywhere; every other occurrence
   untouched; next week auto-restores; block expiry/endDate logic unaffected.
 
@@ -95,7 +99,7 @@ clients have no push subscriptions — verified 2026-07-15).
   1. **Dedupe:** skip if a `releaseNotifications/{blockId_date}` marker doc exists; else create it
      (transaction). Guarantees ONE blast per block+date even across undo/re-release cycles.
   2. **Push to all clients** via `sendPushToAllClients`:
-     - Title: `Slot just opened up! 🎾`
+     - Title: `Slot just opened up! ⚽`
      - Body: `{Court} · {Weekday} {D Mon} · {start}–{end} — tap to book.`
      - `data.url`: client-app booking screen deep link (Kimi: use the client app's routing —
        land on the booking flow with the date preselected if the router supports it; plain app
