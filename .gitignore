@@ -62,3 +62,7 @@ tmp-audit/ad-screenshots/
 # Playwright/Chrome profile dirs (contain auth tokens - NEVER commit)
 testing-tools/profile-panel/
 testing-tools/profile-*/
+
+# Graphify local knowledge-graph artifacts (rebuild with: graphify update <path>)
+graphify-out/
+**/graphify-out/
