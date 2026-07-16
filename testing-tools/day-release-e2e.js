@@ -283,8 +283,21 @@ async function ensureAdminAuth(auth) {
         check('date header shows target date', datePattern.test(headerText || ''), headerText || '');
 
         const slot = clientPage.locator('button', { hasText: new RegExp(`^${probeStart}$`) }).first();
-        const enabled = await slot.isEnabled();
-        check(`client ${probeStart} slot enabled on released date`, enabled);
+
+        // Settle-wait: the client availability check renders slots as disabled while
+        // Firestore data loads. Poll until at least one time slot is enabled (signals
+        // the check resolved), then assert the target slot.
+        let slotEnabled = false;
+        const slotDeadline = Date.now() + 30000;
+        while (Date.now() < slotDeadline) {
+          const anyEnabled = await clientPage.locator('button').filter({ hasText: /^[0-9]{2}:[0-9]{2}$/ }).first().isEnabled().catch(() => false);
+          if (anyEnabled) {
+            slotEnabled = await slot.isEnabled();
+            break;
+          }
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        check(`client ${probeStart} slot enabled on released date`, slotEnabled);
       } finally {
         await clientCtx.close();
       }
