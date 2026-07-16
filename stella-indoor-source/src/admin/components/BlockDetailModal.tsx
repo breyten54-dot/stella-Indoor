@@ -48,7 +48,6 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
   const [editingNote, setEditingNote] = useState(false);
   const [noteCadence, setNoteCadence] = useState<PaymentCadence>('on-the-day');
   const [noteRate, setNoteRate] = useState<string>('0');
-  const [notePaid, setNotePaid] = useState<string>('0');
 
   const isToday = viewDate === new Date().toISOString().split('T')[0];
   const applies = blockAppliesToDate(block, viewDate);
@@ -68,7 +67,6 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
   const startEditNote = () => {
     setNoteCadence(note?.paymentCadence || 'on-the-day');
     setNoteRate(String(note?.rate || 0));
-    setNotePaid(String(note?.paidToDate || 0));
     setEditingNote(true);
   };
 
@@ -79,7 +77,6 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
         {
           paymentCadence: noteCadence,
           rate: Number(noteRate) || 0,
-          paidToDate: Number(notePaid) || 0,
         },
         adminEmail
       );
@@ -246,7 +243,7 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
                   {note ? (
                     <div className="text-sm text-[#94a3b8]">
                       <p className="text-white font-semibold">
-                        Pays {cadenceLabel(note.paymentCadence).toLowerCase()} · {formatCurrency(note.rate)} · {formatCurrency(note.paidToDate)} paid to date
+                        Pays {cadenceLabel(note.paymentCadence).toLowerCase()} · {formatCurrency(note.rate)}
                       </p>
                       <p className="text-[10px] mt-1">Updated {new Date(note.updatedAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })} by {note.updatedBy}</p>
                     </div>
@@ -276,27 +273,15 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
                       Monthly
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#64748b] uppercase tracking-wider mb-1">Rate (ZAR)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={noteRate}
-                        onChange={(e) => setNoteRate(e.target.value)}
-                        className="w-full h-10 rounded-lg bg-[#0b0f1e] border border-[#1e293b] text-white text-sm px-3 focus:outline-none focus:border-[#6366f1]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#64748b] uppercase tracking-wider mb-1">Paid to date</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={notePaid}
-                        onChange={(e) => setNotePaid(e.target.value)}
-                        className="w-full h-10 rounded-lg bg-[#0b0f1e] border border-[#1e293b] text-white text-sm px-3 focus:outline-none focus:border-[#6366f1]"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#64748b] uppercase tracking-wider mb-1">Rate (ZAR)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={noteRate}
+                      onChange={(e) => setNoteRate(e.target.value)}
+                      className="w-full h-10 rounded-lg bg-[#0b0f1e] border border-[#1e293b] text-white text-sm px-3 focus:outline-none focus:border-[#6366f1]"
+                    />
                   </div>
                   <div className="flex gap-2">
                     <button
