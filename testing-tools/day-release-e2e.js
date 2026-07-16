@@ -16,6 +16,8 @@ const env = (n) => {
 };
 
 const TMP = path.join(require('os').tmpdir(), 'stella-dayrelease-e2e');
+const ADMIN_URL = (process.env.E2E_ADMIN_URL || 'https://stella-indoor-admin.web.app/#/calendar') + (process.env.E2E_ADMIN_URL ? '' : '');
+const CLIENT_URL = process.env.E2E_CLIENT_URL || 'https://stella-indoor.web.app';
 const ADMIN_PROFILE = path.join(TMP, 'admin-profile');
 const CLIENT_PROFILE = path.join(TMP, 'client-profile');
 
@@ -106,7 +108,7 @@ async function bustCache(page) {
     const adminCtx = await chromium.launchPersistentContext(ADMIN_PROFILE, { headless: true, channel: 'chrome' });
     const adminPage = adminCtx.pages()[0] || await adminCtx.newPage();
     try {
-      await adminPage.goto('https://stella-indoor-admin.web.app/#/calendar', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await adminPage.goto(ADMIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await loginIfNeeded(adminPage, env('VITE_ADMIN_EMAIL'), env('VITE_ADMIN_PASSWORD'));
       await bustCache(adminPage);
       await adminPage.reload({ waitUntil: 'domcontentloaded' });
@@ -120,8 +122,8 @@ async function bustCache(page) {
         await adminPage.waitForTimeout(200);
       }
 
-      // Click the block cell (amber "Block" label) and release it.
-      await adminPage.locator('div').filter({ hasText: /^Block$/ }).first().click({ timeout: 15000 });
+      // Click the block cell by its unique client tag and release it.
+      await adminPage.getByText(tag).first().click({ timeout: 15000 });
       await adminPage.getByRole('button', { name: /Release for (today|this day)/i }).click();
       await adminPage.getByRole('button', { name: 'Confirm release' }).click();
       await adminPage.waitForTimeout(2000);
@@ -160,11 +162,12 @@ async function bustCache(page) {
       await clientCtx.grantPermissions(['notifications']);
       const clientPage = clientCtx.pages()[0] || await clientCtx.newPage();
       try {
-        await clientPage.goto('https://stella-indoor.web.app', { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await clientPage.goto(CLIENT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await loginIfNeeded(clientPage, clientEmail, clientPassword);
         await bustCache(clientPage);
         await clientPage.reload({ waitUntil: 'domcontentloaded' });
         await clientPage.waitForTimeout(3000);
+        await clientPage.getByRole('button', { name: /^Later$/i }).click().catch(() => {});
 
         // BookingApp effect should have attempted push subscription after login.
         // The browser may not yield a real subscription in headless Playwright, so we
@@ -172,13 +175,16 @@ async function bustCache(page) {
         await clientPage.getByText('Book a Court').first().click();
         await clientPage.waitForTimeout(500);
 
-        // Select Big Court.
-        const bigCourtCard = clientPage.locator('div').filter({ hasText: /^Big Court$/ }).first();
-        await bigCourtCard.locator('button:has-text("Select")').click();
+        // Select Big Court (first card in the list) and continue.
+        await clientPage.getByRole('button', { name: /^Select$/ }).first().click();
+        await clientPage.waitForTimeout(500);
+        await clientPage.getByRole('button', { name: /^Continue$/i }).click();
         await clientPage.waitForTimeout(500);
 
         // Select release date and verify the 10:00 slot is enabled.
-        await clientPage.locator('button', { hasText: new RegExp(`^${releaseDate.getDate()}$`) }).first().click();
+        const dateBtn = clientPage.locator('button').filter({ hasText: new RegExp(String(releaseDate.getDate())) }).first();
+        await dateBtn.scrollIntoViewIfNeeded();
+        await dateBtn.click();
         await clientPage.waitForTimeout(1000);
         const slot = clientPage.locator('button', { hasText: /^10:00$/ }).first();
         const enabled = await slot.isEnabled();
@@ -235,11 +241,12 @@ async function bustCache(page) {
       const adminCtx2 = await chromium.launchPersistentContext(ADMIN_PROFILE, { headless: true, channel: 'chrome' });
       const adminPage2 = adminCtx2.pages()[0] || await adminCtx2.newPage();
       try {
-        await adminPage2.goto('https://stella-indoor-admin.web.app/#/calendar', { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await adminPage2.goto(ADMIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await loginIfNeeded(adminPage2, env('VITE_ADMIN_EMAIL'), env('VITE_ADMIN_PASSWORD'));
         await bustCache(adminPage2);
         await adminPage2.reload({ waitUntil: 'domcontentloaded' });
         await adminPage2.waitForTimeout(2000);
+        await adminPage2.getByRole('button', { name: /^Later$/i }).click().catch(() => {});
 
         const nextBtn2 = adminPage2.locator('button:has(svg.lucide-chevron-right)').first();
         for (let i = 0; i < daysDiff; i++) {
@@ -247,7 +254,7 @@ async function bustCache(page) {
           await adminPage2.waitForTimeout(200);
         }
 
-        await adminPage2.locator('div').filter({ hasText: /^Block$/ }).first().click({ timeout: 15000 });
+        await adminPage2.getByText(tag).first().click({ timeout: 15000 });
         await adminPage2.getByText(/Booked by/).waitFor({ timeout: 15000 });
         const undoVisible = await adminPage2.getByRole('button', { name: /Undo release/i }).isVisible().catch(() => false);
         check('Undo hidden when booking exists', !undoVisible);
@@ -256,7 +263,7 @@ async function bustCache(page) {
       }
     }
   } catch (err) {
-    console.error('FATAL:', err.message);
+    check('FATAL: ' + err.message, false);
   } finally {
     // 8. Cleanup — re-authenticate as admin in case client sign-in replaced the user.
     try {
