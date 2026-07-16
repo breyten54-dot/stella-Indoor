@@ -8,7 +8,6 @@ export interface BlockNote {
   blockId: string;
   paymentCadence: PaymentCadence;
   rate: number;
-  paidToDate: number;
   updatedAt: number;
   updatedBy: string;
 }
@@ -20,7 +19,7 @@ function docToBlockNote(blockId: string, data: Record<string, unknown>): BlockNo
     blockId,
     paymentCadence: (data.paymentCadence as PaymentCadence) || 'on-the-day',
     rate: (data.rate as number) || 0,
-    paidToDate: (data.paidToDate as number) || 0,
+
     updatedAt: data.updatedAt instanceof Object && 'toMillis' in data.updatedAt
       ? (data.updatedAt as { toMillis: () => number }).toMillis()
       : (data.updatedAt as number) || Date.now(),
@@ -59,7 +58,7 @@ export function useBlockNotes(blockId: string | undefined) {
   }, [fetchNote]);
 
   const saveNote = useCallback(async (
-    data: Pick<BlockNote, 'paymentCadence' | 'rate' | 'paidToDate'>,
+    data: Pick<BlockNote, 'paymentCadence' | 'rate'>,
     adminEmail: string
   ): Promise<void> => {
     if (!blockId) throw new Error('No block selected');
@@ -68,7 +67,6 @@ export function useBlockNotes(blockId: string | undefined) {
     const payload = {
       paymentCadence: data.paymentCadence,
       rate: Math.max(0, Number(data.rate) || 0),
-      paidToDate: Math.max(0, Number(data.paidToDate) || 0),
       updatedBy: adminEmail,
       updatedAt: serverTimestamp(),
     };

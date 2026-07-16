@@ -354,12 +354,12 @@ export const notifySlotReleased = onDocumentUpdated({ region: 'europe-west1', mi
 
       // Push to all subscribed client devices
       await sendPushToAllClients({
-        title: 'Slot just opened up! 🎾',
+        title: 'Slot just opened up! ⚽',
         body,
         tag: `release-${markerId}`,
         url: 'https://stella-indoor.web.app',
         icon: '/logo-original.jpg',
-        badge: '/badge-admin.png',
+        badge: '/badge-client.png',
         requireInteraction: 'false',
       });
 
@@ -377,7 +377,7 @@ export const notifySlotReleased = onDocumentUpdated({ region: 'europe-west1', mi
           courtName,
           date: dateStr,
           startTime,
-          title: 'Slot just opened up! 🎾',
+          title: 'Slot just opened up! ⚽',
           message: body,
           read: false,
           shown: false,
