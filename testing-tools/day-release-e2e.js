@@ -29,6 +29,73 @@ function addDays(d, n) {
   r.setDate(r.getDate() + n);
   return r;
 }
+function timeToMinutes(t) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+function minutesToTime(m) {
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+// Simple recurrence check (released dates are treated as not blocking).
+function blockAppliesToDateSimple(block, dateStr) {
+  if (block.releasedDates?.includes(dateStr)) return false;
+  if (block.exactDates?.length) return block.exactDates.includes(dateStr);
+  if (block.isRecurring) {
+    const cd = new Date(dateStr);
+    if ((block.dayOfWeek ?? new Date(block.startDate).getDay()) !== cd.getDay()) return false;
+    if (dateStr < block.startDate) return false;
+    if (block.endDate && dateStr > block.endDate) return false;
+    return true;
+  }
+  return block.startDate === dateStr;
+}
+
+async function findFreeWindow(db, courtId, startFrom, durationMinutes = 60, maxDays = 14) {
+  for (let offset = 1; offset <= maxDays; offset++) {
+    const date = addDays(startFrom, offset);
+    const dateStr = ymd(date);
+    const dayOfWeek = date.getDay();
+    const isSunday = dayOfWeek === 0;
+    const hours = isSunday ? { start: 8, end: 22 } : { start: 8, end: 22 };
+    const dayStart = hours.start * 60;
+    const dayEnd = hours.end * 60;
+
+    const [blocksSnap, bookingsSnap] = await Promise.all([
+      getDocs(query(collection(db, 'blockedSlots'), where('courtId', '==', courtId))),
+      getDocs(query(
+        collection(db, 'bookings'),
+        where('courtId', '==', courtId),
+        where('date', '==', dateStr),
+        where('status', '==', 'confirmed')
+      )),
+    ]);
+
+    const intervals = [];
+    for (const b of blocksSnap.docs) {
+      const data = b.data();
+      if (!blockAppliesToDateSimple(data, dateStr)) continue;
+      intervals.push({ start: timeToMinutes(data.startTime), end: timeToMinutes(data.endTime) });
+    }
+    for (const b of bookingsSnap.docs) {
+      const data = b.data();
+      intervals.push({ start: timeToMinutes(data.startTime), end: timeToMinutes(data.endTime) });
+    }
+    intervals.sort((a, b) => a.start - b.start);
+
+    let cursor = dayStart;
+    for (const iv of intervals) {
+      if (cursor + durationMinutes <= iv.start) {
+        return { date, dateStr, startTime: minutesToTime(cursor), endTime: minutesToTime(cursor + durationMinutes) };
+      }
+      cursor = Math.max(cursor, iv.end);
+    }
+    if (cursor + durationMinutes <= dayEnd) {
+      return { date, dateStr, startTime: minutesToTime(cursor), endTime: minutesToTime(cursor + durationMinutes) };
+    }
+  }
+  throw new Error('Could not find a free window in the next ' + maxDays + ' days');
+}
 
 async function loginIfNeeded(page, email, password) {
   try {
@@ -55,6 +122,15 @@ async function bustCache(page) {
   });
 }
 
+async function ensureAdminAuth(auth) {
+  try {
+    await signInWithEmailAndPassword(auth, env('VITE_ADMIN_EMAIL'), env('VITE_ADMIN_PASSWORD'));
+    await auth.authStateReady();
+  } catch (err) {
+    console.log('  WARN — admin re-auth failed:', err.message);
+  }
+}
+
 (async () => {
   const app = initializeApp({
     apiKey: env('VITE_FIREBASE_API_KEY'),
@@ -73,13 +149,19 @@ async function bustCache(page) {
   };
 
   const today = new Date();
-  const releaseDate = addDays(today, 1);
-  const releaseStr = ymd(releaseDate);
+  const courtId = 'big-court';
+  const courtName = 'Big Court';
+  const probeDuration = 60; // minutes
+  const { date: releaseDate, dateStr: releaseStr, startTime: probeStart, endTime: probeEnd } =
+    await findFreeWindow(db, courtId, today, probeDuration);
+  console.log(`[e2e] probe window: ${courtName} ${releaseStr} ${probeStart}–${probeEnd}`);
+  const daysDiff = Math.max(0, Math.round((releaseDate.getTime() - today.getTime()) / 86400000));
   const tag = 'DAYRELEASE-' + Date.now();
 
   let blockId = null;
   let bookingId = null;
-  let clientSubId = null;
+  let fakeSubId = null;
+  let adminCtx = null;
 
   try {
     // 1. Create a recurring block via Firestore so the UI has something to release.
@@ -87,12 +169,12 @@ async function bustCache(page) {
     blockId = blockRef.id;
     const startDate = ymd(addDays(releaseDate, -7));
     await setDoc(blockRef, {
-      courtId: 'big-court',
-      courtName: 'Big Court',
+      courtId,
+      courtName,
       startDate,
       endDate: null,
-      startTime: '10:00',
-      endTime: '12:00',
+      startTime: probeStart,
+      endTime: probeEnd,
       type: 'block-booking',
       clientName: tag,
       isRecurring: true,
@@ -104,8 +186,10 @@ async function bustCache(page) {
     });
     check('created recurring block in Firestore', true, `id=${blockId}`);
 
-    // 2. Admin UI: navigate to release date and release the block.
-    const adminCtx = await chromium.launchPersistentContext(ADMIN_PROFILE, { headless: true, channel: 'chrome' });
+    // 2. Admin UI: navigate to release date, open the block, and release it.
+    //    Keep this context open so the same modal can later be observed after a
+    //    simulated client booking is created.
+    adminCtx = await chromium.launchPersistentContext(ADMIN_PROFILE, { headless: true, channel: 'chrome' });
     const adminPage = adminCtx.pages()[0] || await adminCtx.newPage();
     try {
       await adminPage.goto(ADMIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -115,7 +199,6 @@ async function bustCache(page) {
       await adminPage.waitForTimeout(2000);
 
       // Move day view from today to release date.
-      const daysDiff = Math.max(0, Math.round((releaseDate.getTime() - today.getTime()) / 86400000));
       const nextBtn = adminPage.locator('button:has(svg.lucide-chevron-right)').first();
       for (let i = 0; i < daysDiff; i++) {
         await nextBtn.click();
@@ -129,8 +212,9 @@ async function bustCache(page) {
       await adminPage.waitForTimeout(2000);
       await adminPage.getByText(/Released for this day/).waitFor({ timeout: 15000 });
       check('admin UI released the slot', true);
-    } finally {
-      await adminCtx.close();
+    } catch (err) {
+      check('admin UI release flow', false, err.message);
+      throw err;
     }
 
     // 3. Verify Firestore release marker.
@@ -139,8 +223,14 @@ async function bustCache(page) {
     check('releasedDates contains target date', releasedDates.includes(releaseStr), releasedDates.join(','));
 
     const markerId = `${blockId}_${releaseStr}`;
-    const markerSnap = await getDoc(doc(db, 'releaseNotifications', markerId));
-    check('releaseNotifications dedupe marker created', markerSnap.exists(), markerId);
+    let markerFound = false;
+    const markerDeadline = Date.now() + 30000;
+    while (Date.now() < markerDeadline) {
+      const markerSnap = await getDoc(doc(db, 'releaseNotifications', markerId));
+      if (markerSnap.exists()) { markerFound = true; break; }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    check('releaseNotifications dedupe marker created', markerFound, markerId);
 
     // 4. Client-side tests.
     const clientEmailRaw = env('VITE_TEST_CLIENT_EMAIL');
@@ -181,28 +271,63 @@ async function bustCache(page) {
         await clientPage.getByRole('button', { name: /^Continue$/i }).click();
         await clientPage.waitForTimeout(500);
 
-        // Select release date and verify the 10:00 slot is enabled.
-        const dateBtn = clientPage.locator('button').filter({ hasText: new RegExp(String(releaseDate.getDate())) }).first();
+        // Select release date and verify the chosen slot is enabled.
+        const dateBtn = clientPage.locator('span.text-xl.font-bold.tab-nums').filter({ hasText: new RegExp(`^${releaseDate.getDate()}$`) }).first();
         await dateBtn.scrollIntoViewIfNeeded();
         await dateBtn.click();
         await clientPage.waitForTimeout(1000);
-        const slot = clientPage.locator('button', { hasText: /^10:00$/ }).first();
+
+        // Precondition: the time-selection header must show the target date.
+        const headerText = await clientPage.locator('span', { hasText: /Available Slots/ }).textContent();
+        const datePattern = new RegExp(`${releaseDate.getDate()}.*${releaseDate.toLocaleDateString('en-ZA', { month: 'short' })}`);
+        check('date header shows target date', datePattern.test(headerText || ''), headerText || '');
+
+        const slot = clientPage.locator('button', { hasText: new RegExp(`^${probeStart}$`) }).first();
         const enabled = await slot.isEnabled();
-        check('client 10:00 slot enabled on released date', enabled);
+        check(`client ${probeStart} slot enabled on released date`, enabled);
       } finally {
         await clientCtx.close();
       }
 
-      // 5. Simulate a confirmed client booking for the released slot.
+      // 5. Sign in as the client so any client-attributed Firestore writes use the right actor.
+      await signInWithEmailAndPassword(auth, clientEmail, clientPassword);
+
+      // 6. Verify push subscription doc exists OR create a fake one to exercise send.
+      const subsSnap = await getDocs(query(collection(db, 'clientSubscriptions'), where('userEmail', '==', clientEmail)));
+      const existingFake = subsSnap.docs.find(d => d.data().deviceInfo === 'day-release-e2e-fake');
+      if (existingFake) {
+        fakeSubId = existingFake.id;
+        console.log('  INFO — reusing existing fake client subscription');
+      } else if (subsSnap.empty) {
+        const fakeEndpoint = 'https://fcm.googleapis.com/fcm/send/dayrelease-e2e-' + Date.now();
+        fakeSubId = Buffer.from(fakeEndpoint).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 50);
+        await setDoc(doc(db, 'clientSubscriptions', fakeSubId), {
+          endpoint: fakeEndpoint,
+          keys: { p256dh: 'dummy', auth: 'dummy' },
+          userEmail: clientEmail,
+          deviceInfo: 'day-release-e2e-fake',
+          failures: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+        console.log('  INFO — no real client subscription; created fake endpoint to exercise send path');
+      } else {
+        check('client subscription doc exists', true, subsSnap.docs[0].id);
+      }
+
+      // 7. Simulate a confirmed client booking for the released slot.
+      // The booking rules require request.resource.data.userEmail == auth.token.email,
+      // so this write must run as the client, not as admin.
       const bookingRef = doc(collection(db, 'bookings'));
       bookingId = bookingRef.id;
+      const bookingEndMin = timeToMinutes(probeStart) + probeDuration;
       await setDoc(bookingRef, {
-        courtId: 'big-court',
-        courtName: 'Big Court',
+        courtId,
+        courtName,
         date: releaseStr,
-        startTime: '10:00',
-        endTime: '11:00',
-        duration: 1,
+        startTime: probeStart,
+        endTime: minutesToTime(bookingEndMin),
+        duration: probeDuration / 60,
         status: 'confirmed',
         userEmail: clientEmail,
         clientDetails: {
@@ -217,77 +342,62 @@ async function bustCache(page) {
         createdAt: Date.now(),
       });
 
-      // 6. Verify push subscription doc exists OR create a fake one to exercise send.
-      const subsSnap = await getDocs(query(collection(db, 'clientSubscriptions'), where('userEmail', '==', clientEmail)));
-      if (subsSnap.empty) {
-        const fakeEndpoint = 'https://fcm.googleapis.com/fcm/send/dayrelease-e2e-' + Date.now();
-        clientSubId = Buffer.from(fakeEndpoint).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 50);
-        await setDoc(doc(db, 'clientSubscriptions', clientSubId), {
-          endpoint: fakeEndpoint,
-          keys: { p256dh: 'dummy', auth: 'dummy' },
-          userEmail: clientEmail,
-          deviceInfo: 'day-release-e2e-fake',
-          failures: 0,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        });
-        console.log('  INFO — no real client subscription; created fake endpoint to exercise send path');
-      } else {
-        clientSubId = subsSnap.docs[0].id;
-        check('client subscription doc exists', true, clientSubId);
+      // 8. Clean up the fake subscription while still signed in as the client
+      //    (clientSubscriptions are owner-scoped and cannot be deleted by admin).
+      if (fakeSubId) {
+        await deleteDoc(doc(db, 'clientSubscriptions', fakeSubId));
+        console.log('  INFO — deleted fake client subscription');
+        fakeSubId = null;
       }
 
-      // 7. Admin UI: reopen the block and confirm Undo is hidden once booked.
-      const adminCtx2 = await chromium.launchPersistentContext(ADMIN_PROFILE, { headless: true, channel: 'chrome' });
-      const adminPage2 = adminCtx2.pages()[0] || await adminCtx2.newPage();
+      // 9. Sign back in as admin for any remaining server-side steps and cleanup.
+      await ensureAdminAuth(auth);
+
+      // 10. Admin UI: the still-open block modal should switch to "Booked by"
+      //    and hide the Undo button once a confirmed booking exists on the slot.
       try {
-        await adminPage2.goto(ADMIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await loginIfNeeded(adminPage2, env('VITE_ADMIN_EMAIL'), env('VITE_ADMIN_PASSWORD'));
-        await bustCache(adminPage2);
-        await adminPage2.reload({ waitUntil: 'domcontentloaded' });
-        await adminPage2.waitForTimeout(2000);
-        await adminPage2.getByRole('button', { name: /^Later$/i }).click().catch(() => {});
-
-        const nextBtn2 = adminPage2.locator('button:has(svg.lucide-chevron-right)').first();
-        for (let i = 0; i < daysDiff; i++) {
-          await nextBtn2.click();
-          await adminPage2.waitForTimeout(200);
-        }
-
-        await adminPage2.getByText(tag).first().click({ timeout: 15000 });
-        await adminPage2.getByText(/Booked by/).waitFor({ timeout: 15000 });
-        const undoVisible = await adminPage2.getByRole('button', { name: /Undo release/i }).isVisible().catch(() => false);
+        await adminPage.getByText(/Released for this day/).waitFor({ state: 'detached', timeout: 30000 });
+        await adminPage.getByText(/Booked by/).waitFor({ timeout: 30000 });
+        const undoVisible = await adminPage.getByRole('button', { name: /Undo release/i }).isVisible({ timeout: 5000 }).catch(() => false);
         check('Undo hidden when booking exists', !undoVisible);
-      } finally {
-        await adminCtx2.close();
+      } catch (err) {
+        check('admin UI reflects booking and hides Undo', false, err.message);
       }
     }
   } catch (err) {
     check('FATAL: ' + err.message, false);
   } finally {
-    // 8. Cleanup — re-authenticate as admin in case client sign-in replaced the user.
-    try {
-      await signInWithEmailAndPassword(auth, env('VITE_ADMIN_EMAIL'), env('VITE_ADMIN_PASSWORD'));
-    } catch {
-      // best effort
-    }
+    // 10. Cleanup — make sure we are authenticated as admin before deleting test data.
+    await ensureAdminAuth(auth);
+
     if (bookingId) {
-      await deleteDoc(doc(db, 'bookings', bookingId)).catch(() => {});
+      await deleteDoc(doc(db, 'bookings', bookingId)).catch((e) => console.log('  WARN — booking cleanup:', e.message));
       console.log('[e2e] cleaned up test booking');
     }
     if (blockId) {
-      await deleteDoc(doc(db, 'blockedSlots', blockId)).catch(() => {});
+      await deleteDoc(doc(db, 'blockedSlots', blockId)).catch((e) => console.log('  WARN — block cleanup:', e.message));
       console.log('[e2e] cleaned up test block');
     }
-    if (clientSubId) {
-      await deleteDoc(doc(db, 'clientSubscriptions', clientSubId)).catch(() => {});
-      console.log('[e2e] cleaned up test client subscription');
+    if (fakeSubId) {
+      // If we are still holding a fake sub id, attempt to delete it as the client owner.
+      try {
+        await signInWithEmailAndPassword(auth, env('VITE_TEST_CLIENT_EMAIL'), env('VITE_TEST_CLIENT_PASSWORD'));
+        await deleteDoc(doc(db, 'clientSubscriptions', fakeSubId));
+        console.log('[e2e] cleaned up test client subscription (as client)');
+      } catch (e) {
+        console.log('  WARN — fake subscription cleanup:', e.message);
+      }
     }
     if (blockId) {
       await deleteDoc(doc(db, 'releaseNotifications', `${blockId}_${releaseStr}`)).catch(() => {});
       const notifSnap = await getDocs(query(collection(db, 'notifications'), where('type', '==', 'slot-released'), where('date', '==', releaseStr))).catch(() => ({ docs: [] }));
       for (const n of notifSnap.docs) await deleteDoc(n.ref).catch(() => {});
       console.log('[e2e] cleaned up release markers and in-app notifications');
+    }
+
+    if (adminCtx) {
+      await adminCtx.close().catch(() => {});
+      console.log('[e2e] closed admin browser context');
     }
   }
 
