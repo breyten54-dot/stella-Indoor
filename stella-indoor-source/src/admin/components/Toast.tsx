@@ -10,7 +10,7 @@ export function Toast({ message, type, onClose }: ToastProps) {
   return (
     <div className="fixed top-4 right-4 z-[100] max-w-sm animate-fade-in">
       <div className={`rounded-xl shadow-lg p-4 flex items-start gap-3 ${
-        type === 'success' ? 'bg-[#1B7A40] text-white' : 'bg-red-600 text-white'
+        type === 'success' ? 'bg-[#6366f1] text-white' : 'bg-red-600 text-white'
       }`}>
         {type === 'success' ? (
           <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />

@@ -51,8 +51,8 @@ function showBrowserNotification(title: string, body: string, icon: string = '/l
       icon,
       // Android uses the badge as a MASK for the status-bar icon. It must be a
       // white-on-transparent silhouette; a colour photo renders as a plain white
-      // square. badge-client.png is a 96×96 monochrome client-logo silhouette.
-      badge: '/badge-client.png',
+      // square. badge-client-v2.png is a 96×96 monochrome client-logo silhouette.
+      badge: '/badge-client-v2.png',
       tag: title,
       requireInteraction: true,
       vibrate: [300, 100, 300],

@@ -127,7 +127,7 @@ export function PushDiagnostics() {
     }
   };
 
-  const ok = (v: boolean) => (v ? 'text-[#7ED321]' : 'text-red-400');
+  const ok = (v: boolean) => (v ? 'text-[#818cf8]' : 'text-red-400');
   const line = 'flex items-start justify-between gap-3 py-1.5 text-xs';
 
   return (
@@ -181,8 +181,8 @@ export function PushDiagnostics() {
             <div className={line}><span className="text-[#64748b]">Endpoint</span><span className="text-[#cbd5e1] break-all text-right">{report.subscription.endpointPrefix}...</span></div>
           )}
           {report.subscribeAttempt && (
-            <div className={`mt-2 p-3 rounded-xl border ${report.subscribeAttempt.success ? 'bg-[#1B7A40]/10 border-[#1B7A40]/20' : 'bg-red-500/10 border-red-500/20'}`}>
-              <p className={`text-xs font-bold ${report.subscribeAttempt.success ? 'text-[#7ED321]' : 'text-red-300'}`} data-testid="subscribe-attempt">
+            <div className={`mt-2 p-3 rounded-xl border ${report.subscribeAttempt.success ? 'bg-[#6366f1]/10 border-[#6366f1]/20' : 'bg-red-500/10 border-red-500/20'}`}>
+              <p className={`text-xs font-bold ${report.subscribeAttempt.success ? 'text-[#818cf8]' : 'text-red-300'}`} data-testid="subscribe-attempt">
                 Subscribe attempt: {report.subscribeAttempt.success ? 'SUCCESS' : `FAILED at step "${report.subscribeAttempt.step}"`}
               </p>
               {report.subscribeAttempt.error && <p className="text-[11px] text-red-300/80 mt-1 break-all">{report.subscribeAttempt.error}</p>}

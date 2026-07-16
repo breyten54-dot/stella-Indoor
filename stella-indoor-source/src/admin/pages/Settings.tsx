@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Save, Check, Clock, Banknote, Bell, BellOff, Shield, Trash2, AlertTriangle, Loader2, Download, Smartphone } from 'lucide-react';
 import { deleteAllBookings } from '@/hooks/useFirestoreBookings';
 import { isPushSupported, subscribeToPush, unsubscribeFromPush, isPushSubscribed, isPushSubscriptionCurrent } from '@/admin/lib/pushNotifications';
-import { InstallModal } from '@/components/InstallModal';
+import { useInstallPrompt, InstallModal } from '@/components/InstallModal';
 import { useAppSettings } from '@/admin/hooks/useAppSettings';
 import { BatteryOptimizationGuide, BatteryOptimizationButton } from '@/admin/components/BatteryOptimizationGuide';
 import { PushDiagnostics } from '@/admin/components/PushDiagnostics';
@@ -10,6 +10,7 @@ import { NotificationSetupGuide } from '@/admin/components/NotificationSetupGuid
 
 export function Settings() {
   const { settings, loading: settingsLoading, saveSettings } = useAppSettings();
+  const { installed, showModal, setShowModal, openInstall } = useInstallPrompt();
 
   const [saved, setSaved] = useState(false);
   const [openingTime, setOpeningTime] = useState(settings.openingTime);
@@ -20,7 +21,6 @@ export function Settings() {
   const [payWindow, setPayWindow] = useState(String(settings.paymentWindowMinutes));
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [clearConfirm, setClearConfirm] = useState(false);
-  const [showInstallModal, setShowInstallModal] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Push notification state
@@ -264,7 +264,7 @@ export function Settings() {
                 disabled={pushLoading}
                 className={`relative h-9 px-4 rounded-xl text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-50
                   ${pushSubscribed
-                    ? 'bg-[#1B7A40] text-white hover:bg-[#145C32]'
+                    ? 'bg-[#6366f1] text-white hover:bg-[#4f46e5]'
                     : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white hover:from-[#5558e0] hover:to-[#7c4ee5]'
                   }`}
               >
@@ -286,9 +286,9 @@ export function Settings() {
             )}
 
             {pushSubscribed && (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-[#1B7A40]/10 border border-[#1B7A40]/20">
-                <Check className="w-3.5 h-3.5 text-[#7ED321] shrink-0" />
-                <p className="text-xs text-[#7ED321]">Subscribed. You will receive notifications even when this app is closed.</p>
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-[#6366f1]/10 border border-[#6366f1]/20">
+                <Check className="w-3.5 h-3.5 text-[#818cf8] shrink-0" />
+                <p className="text-xs text-[#818cf8]">Subscribed. You will receive notifications even when this app is closed.</p>
               </div>
             )}
 
@@ -348,17 +348,22 @@ export function Settings() {
             <p className="text-[11px] text-[#475569] mt-0.5">Add to home screen for quick access like a native app</p>
           </div>
           <button
-            onClick={() => setShowInstallModal(true)}
-            className="h-9 px-4 rounded-xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white text-xs font-bold flex items-center gap-1.5 hover:from-[#5558e0] hover:to-[#7c4ee5] transition-all shadow-lg shadow-[#6366f1]/20"
+            onClick={openInstall}
+            disabled={installed}
+            className={`h-9 px-4 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg shadow-[#6366f1]/20 ${
+              installed
+                ? 'bg-[#1e293b] text-[#94a3b8] cursor-default'
+                : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e0] hover:to-[#7c4ee5]'
+            }`}
           >
-            <Download className="w-3.5 h-3.5" />
-            Install App
+            {installed ? <Check className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+            {installed ? 'Installed ✓' : 'Install App'}
           </button>
         </div>
       </div>
 
       {/* Install Modal */}
-      <InstallModal open={showInstallModal} onClose={() => setShowInstallModal(false)} />
+      <InstallModal open={showModal} onClose={() => setShowModal(false)} variant="admin" />
 
       {/* Battery Optimization Guide */}
       <BatteryOptimizationGuide open={showBatteryGuide} onClose={() => setShowBatteryGuide(false)} />
@@ -385,7 +390,7 @@ export function Settings() {
       {/* Save */}
       <div className="flex justify-end">
         <button onClick={handleSave} disabled={saving}
-          className={`h-11 px-6 rounded-xl font-bold text-sm flex items-center gap-2 transition-all disabled:opacity-50 ${saved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e0] hover:to-[#7c4ee5] text-white shadow-lg shadow-[#6366f1]/20'}`}>
+          className={`h-11 px-6 rounded-xl font-bold text-sm flex items-center gap-2 transition-all disabled:opacity-50 ${saved ? 'bg-[#6366f1]/20 text-[#818cf8] border border-[#6366f1]/30' : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e0] hover:to-[#7c4ee5] text-white shadow-lg shadow-[#6366f1]/20'}`}>
           {saving ? (
             <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
           ) : saved ? (

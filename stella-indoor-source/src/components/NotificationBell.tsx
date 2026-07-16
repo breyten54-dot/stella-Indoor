@@ -12,8 +12,8 @@ interface Props {
 
 const TYPE_CONFIG: Record<string, { icon: typeof Clock; color: string; bgColor: string }> = {
   'admin-cancelled': { icon: AlertTriangle, color: 'text-red-400', bgColor: 'bg-red-500/10' },
-  'reminder-1h': { icon: Clock, color: 'text-[#818cf8]', bgColor: 'bg-[#6366f1]/10' },
-  'reminder-30m': { icon: Clock, color: 'text-[#a78bfa]', bgColor: 'bg-[#8b5cf6]/10' },
+  'reminder-1h': { icon: Clock, color: 'text-[#7ED321]', bgColor: 'bg-[#1B7A40]/10' },
+  'reminder-30m': { icon: Clock, color: 'text-[#22c55e]', bgColor: 'bg-[#22c55e]/10' },
   'reminder-5m': { icon: BellRing, color: 'text-[#7ED321]', bgColor: 'bg-[#1B7A40]/10' },
 };
 
@@ -55,7 +55,7 @@ export function NotificationBell({ notifications, unreadCount, onMarkRead, onMar
               {notifications.length > 0 && (
                 <button
                   onClick={() => { onMarkAllRead(); }}
-                  className="p-1.5 rounded-lg hover:bg-[#6366f1]/10 text-[#64748b] hover:text-[#818cf8] transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-[#1B7A40]/10 text-[#64748b] hover:text-[#7ED321] transition-colors"
                   title="Mark all read"
                 >
                   <Check className="w-3.5 h-3.5" />
@@ -79,10 +79,10 @@ export function NotificationBell({ notifications, unreadCount, onMarkRead, onMar
                   <div
                     key={n.id}
                     onClick={() => { if (!n.read) onMarkRead(n.id); }}
-                    className={`px-4 py-3 border-b border-[#1e293b] last:border-0 cursor-pointer transition-colors ${n.read ? 'opacity-60' : `${config.bgColor} hover:bg-[#6366f1]/5`}`}
+                    className={`px-4 py-3 border-b border-[#1e293b] last:border-0 cursor-pointer transition-colors ${n.read ? 'opacity-60' : `${config.bgColor} hover:bg-[#1B7A40]/5`}`}
                   >
                     <div className="flex items-start gap-2.5">
-                      {!n.read && <div className="w-2 h-2 rounded-full bg-[#6366f1] mt-1.5 shrink-0" />}
+                      {!n.read && <div className="w-2 h-2 rounded-full bg-[#7ED321] mt-1.5 shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-0.5">
                           <Icon className={`w-3 h-3 ${config.color}`} />

@@ -9,7 +9,7 @@ export default function App() {
   return (
     <AuthProvider>
       <InstallPrompt />
-      <ServiceWorkerUpdater swPath="/sw.js" />
+      <ServiceWorkerUpdater swPath="/sw.js" variant="client" />
       <Routes>
         <Route path="/*" element={<BookingApp />} />
       </Routes>

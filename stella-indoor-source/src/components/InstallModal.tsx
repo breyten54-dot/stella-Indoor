@@ -72,9 +72,16 @@ function detectPlatform(): Platform {
 interface InstallModalProps {
   open: boolean;
   onClose: () => void;
+  variant?: 'client' | 'admin';
 }
 
-export function InstallModal({ open, onClose }: InstallModalProps) {
+export function InstallModal({ open, onClose, variant = 'client' }: InstallModalProps) {
+  const isAdmin = variant === 'admin';
+  const iconLightClass = isAdmin ? 'text-[#818cf8]' : 'text-[#7ED321]';
+  const iconDarkClass = isAdmin ? 'text-[#6366f1]' : 'text-[#1B7A40]';
+  const stepBadgeClass = isAdmin ? 'bg-[#6366f1]/20 text-[#818cf8]' : 'bg-[#1B7A40]/20 text-[#7ED321]';
+  const primaryBtnClass = isAdmin ? 'bg-[#6366f1] hover:bg-[#4f46e5]' : 'bg-[#1B7A40] hover:bg-[#145C32]';
+
   const [platform] = useState<Platform>(detectPlatform);
 
   if (!open) return null;
@@ -82,28 +89,28 @@ export function InstallModal({ open, onClose }: InstallModalProps) {
   const steps: Record<Platform, { title: string; icon: React.ReactNode; desc: string }[]> = {
     'ios-safari': [
       { title: 'Tap the Share button', icon: <Share className="w-5 h-5 text-[#60A5FA]" />, desc: 'Look for the square icon with an arrow at the bottom of Safari' },
-      { title: 'Scroll and tap "Add to Home Screen"', icon: <PlusSquare className="w-5 h-5 text-[#7ED321]" />, desc: 'It has a + icon. You may need to scroll down in the share menu' },
-      { title: 'Tap "Add"', icon: <Home className="w-5 h-5 text-[#1B7A40]" />, desc: 'The Stella Indoor icon will appear on your home screen' },
+      { title: 'Scroll and tap "Add to Home Screen"', icon: <PlusSquare className={`w-5 h-5 ${iconLightClass}`} />, desc: 'It has a + icon. You may need to scroll down in the share menu' },
+      { title: 'Tap "Add"', icon: <Home className={`w-5 h-5 ${iconDarkClass}`} />, desc: 'The Stella Indoor icon will appear on your home screen' },
     ],
     'android-chrome': [
       { title: 'Tap the menu (3 dots)', icon: <MoreVertical className="w-5 h-5 text-[#60A5FA]" />, desc: 'In the top-right corner of Chrome' },
-      { title: 'Tap "Add to Home screen"', icon: <PlusSquare className="w-5 h-5 text-[#7ED321]" />, desc: 'Or "Install app" if available' },
-      { title: 'Tap "Add"', icon: <Home className="w-5 h-5 text-[#1B7A40]" />, desc: 'The Stella Indoor icon will appear on your home screen' },
+      { title: 'Tap "Add to Home screen"', icon: <PlusSquare className={`w-5 h-5 ${iconLightClass}`} />, desc: 'Or "Install app" if available' },
+      { title: 'Tap "Add"', icon: <Home className={`w-5 h-5 ${iconDarkClass}`} />, desc: 'The Stella Indoor icon will appear on your home screen' },
     ],
     'samsung': [
       { title: 'Tap the menu', icon: <MoreVertical className="w-5 h-5 text-[#60A5FA]" />, desc: 'Bottom-right of Samsung Internet' },
-      { title: 'Tap "Add page to"', icon: <PlusSquare className="w-5 h-5 text-[#7ED321]" />, desc: 'Then select "Home screen"' },
-      { title: 'Tap "Add"', icon: <Home className="w-5 h-5 text-[#1B7A40]" />, desc: 'The Stella Indoor icon will appear on your home screen' },
+      { title: 'Tap "Add page to"', icon: <PlusSquare className={`w-5 h-5 ${iconLightClass}`} />, desc: 'Then select "Home screen"' },
+      { title: 'Tap "Add"', icon: <Home className={`w-5 h-5 ${iconDarkClass}`} />, desc: 'The Stella Indoor icon will appear on your home screen' },
     ],
     'desktop': [
       { title: 'Chrome: Click the install icon', icon: <Download className="w-5 h-5 text-[#60A5FA]" />, desc: 'Look for a computer+arrow icon in the address bar' },
       { title: 'Or use the menu', icon: <MoreVertical className="w-5 h-5 text-[#60A5FA]" />, desc: 'Chrome menu → Cast, save and share → Install page as app' },
-      { title: 'Done!', icon: <Home className="w-5 h-5 text-[#1B7A40]" />, desc: 'The app will open in its own window, just like a desktop app' },
+      { title: 'Done!', icon: <Home className={`w-5 h-5 ${iconDarkClass}`} />, desc: 'The app will open in its own window, just like a desktop app' },
     ],
     'other-mobile': [
       { title: 'Open your browser menu', icon: <MoreVertical className="w-5 h-5 text-[#60A5FA]" />, desc: 'Usually 3 dots or lines in the corner' },
-      { title: 'Tap "Add to Home Screen"', icon: <PlusSquare className="w-5 h-5 text-[#7ED321]" />, desc: 'Or "Install" / "Add shortcut"' },
-      { title: 'Tap "Add"', icon: <Home className="w-5 h-5 text-[#1B7A40]" />, desc: 'The Stella Indoor icon will appear on your home screen' },
+      { title: 'Tap "Add to Home Screen"', icon: <PlusSquare className={`w-5 h-5 ${iconLightClass}`} />, desc: 'Or "Install" / "Add shortcut"' },
+      { title: 'Tap "Add"', icon: <Home className={`w-5 h-5 ${iconDarkClass}`} />, desc: 'The Stella Indoor icon will appear on your home screen' },
     ],
   };
 
@@ -149,7 +156,7 @@ export function InstallModal({ open, onClose }: InstallModalProps) {
                 </div>
                 <div className="pt-1.5 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-[#1B7A40]/20 text-[#7ED321] text-[10px] font-bold flex items-center justify-center shrink-0">
+                    <span className={`w-5 h-5 rounded-full ${stepBadgeClass} text-[10px] font-bold flex items-center justify-center shrink-0`}>
                       {i + 1}
                     </span>
                     <p className="text-sm font-semibold text-white">{step.title}</p>
@@ -165,7 +172,7 @@ export function InstallModal({ open, onClose }: InstallModalProps) {
         <div className="px-5 pb-5 pt-2">
           <button
             onClick={onClose}
-            className="w-full h-11 rounded-xl bg-[#1B7A40] text-white text-sm font-bold hover:bg-[#145C32] transition-colors active:scale-[0.98]"
+            className={`w-full h-11 rounded-xl ${primaryBtnClass} text-white text-sm font-bold transition-colors active:scale-[0.98]`}
           >
             Got it
           </button>

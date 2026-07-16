@@ -359,7 +359,7 @@ export const notifySlotReleased = onDocumentUpdated({ region: 'europe-west1', mi
         tag: `release-${markerId}`,
         url: 'https://stella-indoor.web.app',
         icon: '/logo-original.jpg',
-        badge: '/badge-client.png',
+        badge: '/badge-client-v2.png',
         requireInteraction: 'false',
       });
 

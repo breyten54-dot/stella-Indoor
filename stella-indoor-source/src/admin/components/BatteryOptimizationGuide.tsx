@@ -411,7 +411,7 @@ export function BatteryOptimizationGuide({ open, onClose, onDone }: Props) {
             disabled={markedDone}
             className={`w-full h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${
               markedDone
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                ? 'bg-[#6366f1]/20 text-[#818cf8] border border-[#6366f1]/30'
                 : 'bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e0] hover:to-[#7c4ee5] text-white'
             }`}
           >

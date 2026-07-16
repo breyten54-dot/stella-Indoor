@@ -85,7 +85,7 @@ export function Clients({ clients, bookings, loading }: Props) {
           <p className="text-[10px] text-[#64748b] font-medium uppercase tracking-wider">Total Clients</p>
         </div>
         <div className="bg-[#13182b] rounded-2xl p-4 border border-[#1e293b]">
-          <UserCheck className="w-5 h-5 text-emerald-400 mb-2" />
+          <UserCheck className="w-5 h-5 text-[#818cf8] mb-2" />
           <p className="text-xl font-black">
             {new Set(bookings.filter(b => b.status === 'confirmed').map(b => b.userEmail.toLowerCase())).size}
           </p>
@@ -169,7 +169,7 @@ export function Clients({ clients, bookings, loading }: Props) {
                           </span>
                         )}
                         {bookerType(client.email) === 'new' && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#6366f1]/10 text-[#818cf8]">
                             New
                           </span>
                         )}
