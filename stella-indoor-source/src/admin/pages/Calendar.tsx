@@ -34,12 +34,19 @@ function timeToMinutes(t: string): number {
 }
 
 interface CalendarEntry {
-  type: 'booking' | 'blocked';
+  type: 'booking' | 'blocked' | 'released';
   data: BookingRecord | BlockedSlot;
   // Minute-accurate coverage of the hour cell, so half-hour
   // bookings/blocks render as partially filled cells
   topPct: number;
   heightPct: number;
+  // Only used for released-ghost entries: is there a confirmed booking
+  // overlapping the same court/date/time-range?
+  isBooked?: boolean;
+}
+
+function timesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
+  return timeToMinutes(aStart) < timeToMinutes(bEnd) && timeToMinutes(bStart) < timeToMinutes(aEnd);
 }
 
 function getEntriesForSlot(
@@ -77,6 +84,24 @@ function getEntriesForSlot(
     if (cov) entries.push({ type: 'blocked', data: block, ...cov });
   });
 
+  // Released-day ghost markers: a recurring block released for this date
+  // no longer renders as a solid block, so we show a faint outline that is
+  // still clickable to reopen the block card.
+  blockedSlots.forEach(block => {
+    if (block.courtId !== courtId) return;
+    if (!block.releasedDates?.includes(date)) return;
+    const cov = coverage(block.startTime, block.endTime);
+    if (!cov) return;
+    const isBooked = bookings.some(
+      b =>
+        b.status === 'confirmed' &&
+        b.courtId === courtId &&
+        b.date === date &&
+        timesOverlap(b.startTime, b.endTime, block.startTime, block.endTime),
+    );
+    entries.push({ type: 'released', data: block, ...cov, isBooked });
+  });
+
   return entries;
 }
 
@@ -96,9 +121,14 @@ function SlotCell({ entries, courtId, onBookingClick, onBlockClick }: { entries:
     'maintenance': { bg: 'bg-orange-500/10', border: 'border-orange-500/20', text: 'text-orange-400' },
   };
 
+  // Render released ghosts behind blocks/bookings so live entries stay on top,
+  // but keep the ghost clickable in the exposed border/label area.
+  const renderOrder: Record<CalendarEntry['type'], number> = { released: 0, blocked: 1, booking: 2 };
+  const orderedEntries = [...entries].sort((a, b) => renderOrder[a.type] - renderOrder[b.type]);
+
   return (
     <div className="relative h-full min-h-[52px]">
-      {entries.map((entry, i) => {
+      {orderedEntries.map((entry, i) => {
         const style = { top: `${entry.topPct}%`, height: `${entry.heightPct}%` };
 
         if (entry.type === 'booking') {
@@ -115,6 +145,33 @@ function SlotCell({ entries, courtId, onBookingClick, onBlockClick }: { entries:
               </span>
               <span className="text-[8px] text-[#64748b] truncate">
                 {b.startTime}—{b.endTime} ({b.duration}h)
+              </span>
+            </div>
+          );
+        }
+
+        if (entry.type === 'released') {
+          const block = entry.data as BlockedSlot;
+          const statusLabel = entry.isBooked ? 'Released · booked' : 'Released · open';
+          return (
+            <div
+              key={`r-${block.id}-${i}`}
+              data-testid="released-ghost"
+              style={style}
+              className="absolute inset-0 pointer-events-none"
+            >
+              {/* Faint dashed outline behind blocks/bookings */}
+              <div className="absolute -inset-1 border border-dashed border-[#64748b]/40 rounded-lg transition-colors" />
+              {/* Clickable label sits above any booking overlay and reopens the block card */}
+              <span
+                className="absolute top-0.5 left-1 right-1 text-[8px] font-bold text-[#94a3b8] truncate flex items-center gap-0.5 cursor-pointer hover:text-white z-10 pointer-events-auto"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBlockClick?.(block);
+                }}
+              >
+                {block.isRecurring && <Repeat className="w-2 h-2" />}
+                {statusLabel}
               </span>
             </div>
           );
@@ -365,20 +422,36 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
                                   {court?.name?.replace('Multipurpose ', 'M')}: {b.clientDetails.fullName.split(' ')[0]}
                                 </div>
                               );
-                            } else {
+                            }
+
+                            if (entry.type === 'released') {
                               const block = entry.data as BlockedSlot;
                               const court = COURTS.find(c => c.id === block.courtId);
-                              const colors = block.type === 'block-booking' ? 'bg-amber-500/10 text-amber-400' : block.type === 'closed' ? 'bg-red-500/10 text-red-400' : 'bg-orange-500/10 text-orange-400';
+                              const statusLabel = entry.isBooked ? 'Released·booked' : 'Released·open';
                               return (
                                 <div
                                   key={ei}
+                                  data-testid="released-ghost"
                                   onClick={() => { setSelectedBlock(block); setSelectedBlockDate(dateStr); }}
-                                  className={`text-[8px] px-1 py-0.5 rounded ${colors} truncate font-bold cursor-pointer hover:opacity-80 transition-opacity`}
+                                  className="text-[8px] px-1 py-0.5 rounded border border-dashed border-[#64748b]/40 bg-[#64748b]/5 text-[#94a3b8] truncate font-bold cursor-pointer hover:bg-[#64748b]/10 transition-colors"
                                 >
-                                  {court?.name?.replace('Multipurpose ', 'M')}: {block.type === 'block-booking' ? 'Block' : block.type === 'closed' ? 'Closed' : 'Maint'}
+                                  {court?.name?.replace('Multipurpose ', 'M')}: {statusLabel}
                                 </div>
                               );
                             }
+
+                            const block = entry.data as BlockedSlot;
+                            const court = COURTS.find(c => c.id === block.courtId);
+                            const colors = block.type === 'block-booking' ? 'bg-amber-500/10 text-amber-400' : block.type === 'closed' ? 'bg-red-500/10 text-red-400' : 'bg-orange-500/10 text-orange-400';
+                            return (
+                              <div
+                                key={ei}
+                                onClick={() => { setSelectedBlock(block); setSelectedBlockDate(dateStr); }}
+                                className={`text-[8px] px-1 py-0.5 rounded ${colors} truncate font-bold cursor-pointer hover:opacity-80 transition-opacity`}
+                              >
+                                {court?.name?.replace('Multipurpose ', 'M')}: {block.type === 'block-booking' ? 'Block' : block.type === 'closed' ? 'Closed' : 'Maint'}
+                              </div>
+                            );
                           })}
                           {entries.length > 2 && (
                             <span className="text-[8px] text-[#64748b] pl-1">+{entries.length - 2} more</span>

@@ -212,6 +212,21 @@ async function ensureAdminAuth(auth) {
       await adminPage.waitForTimeout(2000);
       await adminPage.getByText(/Released for this day/).waitFor({ timeout: 15000 });
       check('admin UI released the slot', true);
+
+      // 2b. Close the modal, then verify the released cell shows a ghost marker
+      //    that can be tapped to reopen the block card with the Undo button.
+      await adminPage.locator('h3:has-text("Details") + button').first().click();
+      await adminPage.getByRole('button', { name: /Undo release/i }).waitFor({ state: 'detached', timeout: 5000 });
+      const ghostOpen = adminPage.locator('[data-testid="released-ghost"]').first();
+      await ghostOpen.waitFor({ timeout: 15000 });
+      await adminPage.getByText(/Released · open/i).waitFor({ timeout: 15000 });
+      check('released ghost marker visible (open)', true);
+      await adminPage.getByText(/Released · open/i).first().click();
+      await adminPage.getByRole('button', { name: /Undo release/i }).waitFor({ timeout: 15000 });
+      check('ghost tap reopens block card with Undo', true);
+      // Close modal again to continue the release/booking flow.
+      await adminPage.locator('h3:has-text("Details") + button').first().click();
+      await adminPage.getByRole('button', { name: /Undo release/i }).waitFor({ state: 'detached', timeout: 5000 });
     } catch (err) {
       check('admin UI release flow', false, err.message);
       throw err;
@@ -366,13 +381,19 @@ async function ensureAdminAuth(auth) {
       // 9. Sign back in as admin for any remaining server-side steps and cleanup.
       await ensureAdminAuth(auth);
 
-      // 10. Admin UI: the still-open block modal should switch to "Booked by"
-      //    and hide the Undo button once a confirmed booking exists on the slot.
+      // 10. Admin UI: after the client booking, the released cell shows a ghost
+      //    marker with "Released · booked". Tapping it reopens the block card
+      //    showing "Booked by …" with the Undo button hidden.
       try {
-        await adminPage.getByText(/Released for this day/).waitFor({ state: 'detached', timeout: 30000 });
-        await adminPage.getByText(/Booked by/).waitFor({ timeout: 30000 });
+        const ghostBooked = adminPage.locator('[data-testid="released-ghost"]').first();
+        await ghostBooked.waitFor({ timeout: 15000 });
+        await adminPage.getByText(/Released · booked/i).waitFor({ timeout: 15000 });
+        check('released ghost marker visible (booked)', true);
+        await adminPage.getByText(/Released · booked/i).first().click();
+        await adminPage.getByText(/Booked by/).waitFor({ timeout: 15000 });
         const undoVisible = await adminPage.getByRole('button', { name: /Undo release/i }).isVisible({ timeout: 5000 }).catch(() => false);
         check('Undo hidden when booking exists', !undoVisible);
+        check('ghost tap on booked day reopens block card', true);
       } catch (err) {
         check('admin UI reflects booking and hides Undo', false, err.message);
       }
