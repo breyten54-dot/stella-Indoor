@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { onSnapshot, collection, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { localDateStr } from '@/lib/dates';
 import type { BookingRecord } from '@/types/booking';
 
 export interface DailyStats {
@@ -49,7 +50,7 @@ export function useAdminBookings() {
       totalBookings: confirmed.length,
       cancelledBookings: bookings.filter(b => b.status === 'cancelled').length,
       todayBookings: confirmed.filter(b => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = localDateStr(new Date());
         return b.date === today;
       }).length,
       totalRevenue: confirmed.reduce((s, b) => s + b.totalPrice, 0),
@@ -62,7 +63,7 @@ export function useAdminBookings() {
     for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
-      map.set(d.toISOString().split('T')[0], { bookings: 0, revenue: 0 });
+      map.set(localDateStr(d), { bookings: 0, revenue: 0 });
     }
     bookings.filter(b => b.status === 'confirmed').forEach(b => {
       const existing = map.get(b.date);

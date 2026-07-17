@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useBodyScrollLock } from '@/admin/hooks/useBodyScrollLock';
+import { localDateStr } from '@/lib/dates';
 import { CalendarDays, Clock, CreditCard, Users, TrendingUp, Phone } from 'lucide-react';
 import type { BookingRecord, BookingAttendance } from '@/types/booking';
 import type { DailyStats } from '../hooks/useAdminBookings';
@@ -33,7 +34,7 @@ export function Dashboard({ bookings, stats, dailyStats, courtStats, onAttendanc
     [...bookings].filter(b => b.status === 'confirmed').sort((a, b) => b.createdAt - a.createdAt).slice(0, 8),
     [bookings]);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr(new Date());
   const todays = useMemo(() =>
     bookings.filter(b => b.date === todayStr && b.status === 'confirmed').sort((a, b) => a.startTime.localeCompare(b.startTime)),
     [bookings, todayStr]);

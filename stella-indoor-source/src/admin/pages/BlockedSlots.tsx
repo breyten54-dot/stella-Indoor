@@ -7,6 +7,7 @@ import {
   Calendar as CalIcon, AlertTriangle
 } from 'lucide-react';
 import { blockAppliesToDate, type BlockedSlot, type BlockType } from '../hooks/useBlockedSlots';
+import { localDateStr } from '@/lib/dates';
 
 interface Props {
   slots: BlockedSlot[];
@@ -43,11 +44,6 @@ function timeToMinutes(t: string): number {
   return h * 60 + (m || 0);
 }
 
-// Local YYYY-MM-DD (toISOString would shift the date across the UTC boundary)
-function toLocalYMD(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 // Our UI weekday index (0=Mon … 6=Sun) → JS getDay() (0=Sun … 6=Sat)
 function uiIndexToJsDay(ui: number): number {
   return ui === 6 ? 0 : ui + 1;
@@ -61,7 +57,7 @@ function nextDateForWeekday(ui: number): string {
   d.setHours(0, 0, 0, 0);
   const delta = (target - d.getDay() + 7) % 7;
   d.setDate(d.getDate() + delta);
-  return toLocalYMD(d);
+  return localDateStr(d);
 }
 
 // The most recent occurrence of a UI weekday on or before today. Recurring blocks
@@ -73,7 +69,7 @@ function recentDateForWeekday(ui: number): string {
   d.setHours(0, 0, 0, 0);
   const delta = (d.getDay() - target + 7) % 7;
   d.setDate(d.getDate() - delta);
-  return toLocalYMD(d);
+  return localDateStr(d);
 }
 
 // A block should vanish from the slot-control view once its coverage is entirely
@@ -119,7 +115,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
   }, [slots]);
 
   // Today (local) — expired blocks are hidden from the whole slot-control view.
-  const todayStr = useMemo(() => toLocalYMD(new Date()), []);
+  const todayStr = useMemo(() => localDateStr(new Date()), []);
 
   // Filter slots by selected court AND drop any block whose end date has passed
   // (req: a block set to end on the 30th disappears from slot control after the 30th).
@@ -984,7 +980,7 @@ function CreateBlockModal({
               <input
                 type="date"
                 value={oneOffDate}
-                min={toLocalYMD(new Date())}
+                min={localDateStr(new Date())}
                 onChange={e => {
                   setOneOffDate(e.target.value);
                   if (e.target.value) setDayOfWeek(jsDayToIndex(new Date(e.target.value + 'T00:00:00').getDay()));
@@ -1034,7 +1030,7 @@ function CreateBlockModal({
               <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">
                 End Date <span className="text-[#475569] normal-case">(optional — leave blank for indefinite)</span>
               </label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={toLocalYMD(new Date())} className={inputClass} />
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} min={localDateStr(new Date())} className={inputClass} />
               {!endDate && (
                 <div className="flex items-center gap-1.5 mt-1.5">
                   <AlertTriangle className="w-3 h-3 text-amber-400" />

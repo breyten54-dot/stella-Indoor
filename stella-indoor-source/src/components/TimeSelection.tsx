@@ -3,6 +3,7 @@ import { Clock, AlertCircle } from 'lucide-react';
 import { OPERATING_HOURS, DURATION_OPTIONS } from '@/data/constants';
 import { getBlockedSlotsForCourtAndDate, getCourtBookedIntervals } from '@/hooks/useFirestoreBookings';
 import type { DateTimeSelection, DurationOption } from '@/types/booking';
+import { localDateStr } from '@/lib/dates';
 
 interface SlotInfo {
   time: string;
@@ -10,14 +11,6 @@ interface SlotInfo {
   checking: boolean;
   available: boolean;
   sufficient: boolean;
-}
-
-/** Format a Date as YYYY-MM-DD in LOCAL timezone (not UTC) */
-function localDateStr(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 function generateDates(): Date[] {
