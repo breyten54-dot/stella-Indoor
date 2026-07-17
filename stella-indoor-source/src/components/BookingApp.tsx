@@ -21,6 +21,7 @@ import { StellaClips, type SharedClipSlot } from '@/components/StellaClips';
 import { Footer } from '@/components/Footer';
 import { TermsModal } from '@/components/TermsAndConditions';
 import { HomePage } from '@/components/HomePage';
+import { ClientSettings } from '@/components/ClientSettings';
 import { useBackButton, pushWizardStep } from '@/hooks/useBackButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile } from '@/hooks/useFirestoreUsers';
@@ -113,6 +114,8 @@ export function BookingApp() {
   const [confirming, setConfirming] = useState(false);
   const [emailToast, setEmailToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [showHomePage, setShowHomePage] = useState(true);
+  // Settings overlay
+  const [showSettings, setShowSettings] = useState(false);
   // Terms acknowledgment gate — shown before every booking confirmation
   const [showTermsAck, setShowTermsAck] = useState(false);
 
@@ -125,7 +128,7 @@ export function BookingApp() {
   } = useNotifications(auth.user?.email || null);
 
   // Back button handler: step-by-step wizard navigation
-  const wizardActive = auth.isLoggedIn && !showHomePage && !showMyBookings && !showHighlights && currentStep < 5;
+  const wizardActive = auth.isLoggedIn && !showHomePage && !showMyBookings && !showHighlights && !showSettings && currentStep < 5;
   const { exitPrompt } = useBackButton(
     auth.isLoggedIn,
     showHomePage && !showMyBookings && !showHighlights,
@@ -187,6 +190,15 @@ export function BookingApp() {
     return <MyBookings userEmail={auth.user!.email} onClose={() => setShowMyBookings(false)} />;
   }
 
+  if (auth.isLoggedIn && showSettings) {
+    return (
+      <ClientSettings
+        userEmail={auth.user!.email}
+        onClose={() => setShowSettings(false)}
+      />
+    );
+  }
+
   if (auth.isLoggedIn && showHighlights) {
     return (
       <StellaClips
@@ -227,6 +239,7 @@ export function BookingApp() {
         }}
         onStellaClips={() => setShowHighlights(true)}
         onMyBookings={() => setShowMyBookings(true)}
+        onSettings={() => setShowSettings(true)}
       />
     );
   }
@@ -373,6 +386,7 @@ export function BookingApp() {
         onMyBookings={() => setShowMyBookings(true)}
         onHighlights={() => setShowHighlights(true)}
         onHome={() => setShowHomePage(true)}
+        onSettings={() => setShowSettings(true)}
         notifications={notifications}
         unreadCount={unreadCount}
         onMarkRead={markRead}

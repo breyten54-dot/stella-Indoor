@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Clapperboard, List, ChevronRight } from 'lucide-react';
+import { CalendarDays, Clapperboard, List, ChevronRight, Settings } from 'lucide-react';
 
 interface HomePageProps {
   userName: string;
   onBookCourt: () => void;
   onStellaClips: () => void;
   onMyBookings: () => void;
+  onSettings?: () => void;
 }
 
 const BG_IMAGES = ['/bg-1.jpg', '/bg-2.jpg', '/bg-3.jpg', '/bg-4.jpg'];
@@ -114,7 +115,7 @@ function SlideIndicators({ current }: { current: number }) {
   );
 }
 
-export function HomePage({ userName, onBookCourt, onStellaClips, onMyBookings }: HomePageProps) {
+export function HomePage({ userName, onBookCourt, onStellaClips, onMyBookings, onSettings }: HomePageProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
 
   // Keep track of the current slide for indicators
@@ -132,6 +133,22 @@ export function HomePage({ userName, onBookCourt, onStellaClips, onMyBookings }:
 
       {/* Particles */}
       <Particles />
+
+      {/* Settings button — top-left square black box */}
+      {onSettings && (
+        <div className="absolute top-4 left-4 z-40">
+          <div className="rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 p-2">
+            <button
+              onClick={onSettings}
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-[#7ED321] hover:bg-white/10 transition-colors"
+              aria-label="Settings"
+              title="Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="relative z-30 flex flex-col items-center justify-center min-h-screen px-6 py-20">

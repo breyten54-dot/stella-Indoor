@@ -1,4 +1,4 @@
-import { LogOut, Home } from 'lucide-react';
+import { LogOut, Home, Settings } from 'lucide-react';
 import type { AuthState } from '@/types/booking';
 import type { NotificationRecord } from '@/types/notification';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -11,6 +11,7 @@ interface NavbarProps {
   onMyBookings?: () => void;
   onHighlights?: () => void;
   onHome?: () => void;
+  onSettings?: () => void;
   notifications?: NotificationRecord[];
   unreadCount?: number;
   onMarkRead?: (id: string) => void;
@@ -18,7 +19,7 @@ interface NavbarProps {
   onDeleteNotification?: (id: string) => void;
 }
 
-export function Navbar({ auth, onLogout, onHome, notifications, unreadCount, onMarkRead, onMarkAllRead, onDeleteNotification }: NavbarProps) {
+export function Navbar({ auth, onLogout, onHome, onSettings, notifications, unreadCount, onMarkRead, onMarkAllRead, onDeleteNotification }: NavbarProps) {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 h-14 bg-[#0A0A0A] border-b border-[#2A2A2A]">
       <div className="max-w-7xl mx-auto h-full px-4 flex items-center justify-between">
@@ -34,6 +35,15 @@ export function Navbar({ auth, onLogout, onHome, notifications, unreadCount, onM
               className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-[#1B7A40] transition-colors active:scale-95"
               aria-label="Home" title="Home">
               <Home className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Settings button (if onSettings handler provided) */}
+          {auth.isLoggedIn && onSettings && (
+            <button onClick={onSettings}
+              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-[#1B7A40] transition-colors active:scale-95"
+              aria-label="Settings" title="Settings">
+              <Settings className="w-4 h-4" />
             </button>
           )}
 
