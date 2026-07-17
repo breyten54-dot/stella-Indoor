@@ -13,6 +13,14 @@ export function ServiceWorkerUpdater({ swPath, variant = 'client' }: ServiceWork
   const [show, setShow] = useState(false);
   const regRef = useRef<ServiceWorkerRegistration | null>(null);
 
+  // Escape hatch for genuinely breaking changes: set VITE_FORCE_UPDATE_PROMPT=true
+  // at build time to force the old "Update available" prompt. The CLIENT defaults to
+  // silent updates so ordinary additive deploys do not interrupt the user mid-session.
+  // The ADMIN app keeps its existing prompt unless the global escape hatch is on.
+  const FORCE_UPDATE_PROMPT =
+    (import.meta.env as Record<string, unknown>).VITE_FORCE_UPDATE_PROMPT === 'true';
+  const silentByDefault = !isAdmin && !FORCE_UPDATE_PROMPT;
+
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
@@ -25,7 +33,17 @@ export function ServiceWorkerUpdater({ swPath, variant = 'client' }: ServiceWork
       if (!worker) return;
       worker.addEventListener('statechange', () => {
         if (worker.state === 'activated' && navigator.serviceWorker.controller) {
-          setShow(true);
+          if (silentByDefault) {
+            // Silent mode: let the waiting worker take over. The SW already calls
+            // skipWaiting() and clients.claim(), so the new version becomes active
+            // on the next navigation / app open without a mid-session reload.
+            const waiting = regRef.current?.waiting || regRef.current?.installing;
+            if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' });
+          } else {
+            // Admin default, or breaking-change mode forced by VITE_FORCE_UPDATE_PROMPT:
+            // show the old prompt so the user reloads now.
+            setShow(true);
+          }
         }
       });
     };
@@ -53,7 +71,7 @@ export function ServiceWorkerUpdater({ swPath, variant = 'client' }: ServiceWork
       const reg = regRef.current;
       if (reg) reg.removeEventListener('updatefound', handleUpdateFound);
     };
-  }, [swPath]);
+  }, [swPath, silentByDefault]);
 
   const handleUpdate = async () => {
     setShow(false);
