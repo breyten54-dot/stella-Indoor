@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useBodyScrollLock } from '@/admin/hooks/useBodyScrollLock';
+import { localDateStr } from '@/lib/dates';
 import {
   ChevronLeft, ChevronRight,
   LayoutGrid, Columns3, Calendar as CalIcon, Repeat,
@@ -258,7 +259,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
     : null;
   useBodyScrollLock(selectedBooking !== null || selectedBlock !== null);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr(new Date());
 
   const prevDay = () => setViewDate(d => { const nd = new Date(d); nd.setDate(d.getDate() - 1); return nd; });
   const nextDay = () => setViewDate(d => { const nd = new Date(d); nd.setDate(d.getDate() + 1); return nd; });
@@ -270,7 +271,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
   const prevMonth = () => setViewDate(d => { const nd = new Date(d); nd.setMonth(d.getMonth() - 1); return nd; });
   const nextMonth = () => setViewDate(d => { const nd = new Date(d); nd.setMonth(d.getMonth() + 1); return nd; });
 
-  const currentDateStr = viewDate.toISOString().split('T')[0];
+  const currentDateStr = localDateStr(viewDate);
 
   // ---- DAY VIEW ----
   if (view === 'day') {
@@ -378,7 +379,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
               <span className="text-[10px] font-bold text-[#475569] uppercase tracking-wider">Time</span>
             </div>
             {weekDays.map((d, i) => {
-              const dateStr = d.toISOString().split('T')[0];
+              const dateStr = localDateStr(d);
               const isToday = dateStr === todayStr;
               return (
                 <div key={i} className={`p-3 text-center border-r border-[#1e293b] last:border-r-0 ${isToday ? 'bg-[#6366f1]/5' : ''}`}>
@@ -398,7 +399,7 @@ export function Calendar({ bookings, blockedSlots, onCancelBooking, onAttendance
                   </span>
                 </div>
                 {weekDays.map((day, dayIndex) => {
-                  const dateStr = day.toISOString().split('T')[0];
+                  const dateStr = localDateStr(day);
                   const entries = [
                     ...getEntriesForSlot(dateStr, hour, 'big-court', bookings, blockedSlots),
                     ...getEntriesForSlot(dateStr, hour, 'multi-1', bookings, blockedSlots),

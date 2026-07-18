@@ -8,6 +8,7 @@ import type { BookingRecord } from '@/types/booking';
 import { blockAppliesToDate, type BlockedSlot, useBlockedSlots } from '@/admin/hooks/useBlockedSlots';
 import { useBlockNotes, type PaymentCadence } from '@/admin/hooks/useBlockNotes';
 import { useAdminAuth } from '@/admin/hooks/useAdminAuth';
+import { localDateStr } from '@/lib/dates';
 
 interface BlockDetailModalProps {
   block: BlockedSlot;
@@ -49,7 +50,7 @@ export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDe
   const [noteCadence, setNoteCadence] = useState<PaymentCadence>('on-the-day');
   const [noteRate, setNoteRate] = useState<string>('0');
 
-  const isToday = viewDate === new Date().toISOString().split('T')[0];
+  const isToday = viewDate === localDateStr(new Date());
   const applies = blockAppliesToDate(block, viewDate);
   const released = block.releasedDates?.includes(viewDate) ?? false;
 
