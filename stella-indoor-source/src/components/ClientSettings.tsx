@@ -63,18 +63,6 @@ export function ClientSettings({ userEmail, onClose }: ClientSettingsProps) {
     }
   };
 
-  const handleSendTestNotification = async () => {
-    if (!('serviceWorker' in navigator)) return;
-    const registration = await navigator.serviceWorker.getRegistration('/sw.js');
-    if (!registration) return;
-    await registration.showNotification('Test notification', {
-      body: 'Your Stella Indoor notification channel is working.',
-      icon: '/logo-original.jpg',
-      badge: '/badge-client-v2.png',
-      tag: 'stella-test-notification',
-    });
-  };
-
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPwError(null);
@@ -207,15 +195,6 @@ export function ClientSettings({ userEmail, onClose }: ClientSettingsProps) {
                 )}
                 {subscribed ? 'Notifications enabled' : 'Enable notifications'}
               </button>
-
-              {subscribed && (
-                <button
-                  onClick={handleSendTestNotification}
-                  className="w-full h-11 rounded-xl bg-[#2A2A2A] hover:bg-[#3A3A3A] text-white text-sm font-bold transition-colors"
-                >
-                  Send test notification
-                </button>
-              )}
 
               {pushResult && (
                 <div
