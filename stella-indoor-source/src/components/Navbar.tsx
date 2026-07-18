@@ -17,9 +17,10 @@ interface NavbarProps {
   onMarkRead?: (id: string) => void;
   onMarkAllRead?: () => void;
   onDeleteNotification?: (id: string) => void;
+  onBookNow?: (n: NotificationRecord) => void;
 }
 
-export function Navbar({ auth, onLogout, onHome, onSettings, notifications, unreadCount, onMarkRead, onMarkAllRead, onDeleteNotification }: NavbarProps) {
+export function Navbar({ auth, onLogout, onHome, onSettings, notifications, unreadCount, onMarkRead, onMarkAllRead, onDeleteNotification, onBookNow }: NavbarProps) {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 h-14 bg-[#0A0A0A] border-b border-[#2A2A2A]">
       <div className="max-w-7xl mx-auto h-full px-4 flex items-center justify-between">
@@ -60,6 +61,7 @@ export function Navbar({ auth, onLogout, onHome, onSettings, notifications, unre
               onMarkRead={onMarkRead}
               onMarkAllRead={onMarkAllRead}
               onDelete={onDeleteNotification}
+              onBookNow={onBookNow}
             />
           )}
           {auth.isLoggedIn && (
