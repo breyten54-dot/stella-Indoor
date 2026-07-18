@@ -318,6 +318,7 @@ export const notifySlotReleased = onDocumentUpdated({ region: 'europe-west1', mi
   if (added.length === 0) return;
 
   const blockId = data.after.id;
+  const courtId = (after.courtId as string) || '';
   const courtName = (after.courtName as string) || 'Court';
   const startTime = (after.startTime as string) || '';
   const endTime = (after.endTime as string) || '';
@@ -352,12 +353,20 @@ export const notifySlotReleased = onDocumentUpdated({ region: 'europe-west1', mi
       const { weekday, dayMon } = formatReleaseDate(dateStr);
       const body = `${courtName} · ${weekday} ${dayMon} · ${startTime}–${endTime} — tap to book.`;
 
+      // Deep link straight into a pre-filled booking for this slot (K-8). The client
+      // parses ?book=1&court&date&start&end and jumps into the wizard at the slot.
+      const deepLink = `https://stella-indoor.web.app/?book=1&court=${encodeURIComponent(courtId)}&date=${encodeURIComponent(dateStr)}&start=${encodeURIComponent(startTime)}&end=${encodeURIComponent(endTime)}`;
+
       // Push to all subscribed client devices
       await sendPushToAllClients({
         title: 'Slot just opened up! ⚽',
         body,
         tag: `release-${markerId}`,
-        url: 'https://stella-indoor.web.app',
+        url: deepLink,
+        courtId,
+        date: dateStr,
+        startTime,
+        endTime,
         icon: '/logo-original.jpg',
         badge: '/badge-client-v2.png',
         requireInteraction: 'false',
@@ -374,9 +383,12 @@ export const notifySlotReleased = onDocumentUpdated({ region: 'europe-west1', mi
           type: 'slot-released',
           userEmail: email,
           bookingId: '',
+          courtId,
           courtName,
           date: dateStr,
           startTime,
+          endTime,
+          url: deepLink,
           title: 'Slot just opened up! ⚽',
           message: body,
           read: false,

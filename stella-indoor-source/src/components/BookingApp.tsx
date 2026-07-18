@@ -27,6 +27,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile } from '@/hooks/useFirestoreUsers';
 import { DEMO_MODE } from '@/lib/demo';
 import { subscribeToPush } from '@/lib/clientPush';
+import { localDateStr } from '@/lib/dates';
+import { COURTS } from '@/data/constants';
+import type { Court, DateTimeSelection, Addons, DurationOption } from '@/types/booking';
+import type { NotificationRecord } from '@/types/notification';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return Promise.race([
@@ -60,6 +64,47 @@ function parseJoinToken(): string | null {
   return params.get('join');
 }
 
+// sessionStorage key for a deep-link guest booking awaiting the confirm-step login (K-8).
+const PENDING_BOOKING_KEY = 'stellaPendingBooking';
+
+interface DeepLinkBooking {
+  courtId: string;
+  date: string;
+  start: string;
+  duration: DurationOption;
+}
+
+// Minutes for an HH:MM string; NaN on malformed input.
+function hhmmToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : NaN;
+}
+
+// Duration in hours between start/end HH:MM, only when it is a bookable duration.
+function durationFromStartEnd(start: string, end: string): DurationOption | null {
+  const hours = (hhmmToMinutes(end) - hhmmToMinutes(start)) / 60;
+  return hours === 1 || hours === 1.5 || hours === 2 ? (hours as DurationOption) : null;
+}
+
+// ?book=1&court=<courtId>&date=<YYYY-MM-DD>&start=<HH:MM>&end=<HH:MM> — carried by
+// slot-released pushes/notifications (K-8). Returns null unless every part is present
+// and sane (unknown court, malformed or PAST date, non-bookable window → caller behaves
+// as if there were no deep link). Date check uses LOCAL date keys (BUILD-STANDARDS #22).
+function parseDeepLinkBooking(): DeepLinkBooking | null {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('book') !== '1') return null;
+  const courtId = params.get('court') || '';
+  const date = params.get('date') || '';
+  const start = params.get('start') || '';
+  const end = params.get('end') || '';
+  if (!COURTS.some(c => c.id === courtId)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < localDateStr(new Date())) return null;
+  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return null;
+  const duration = durationFromStartEnd(start, end);
+  if (!duration) return null;
+  return { courtId, date, start, duration };
+}
+
 export function BookingApp() {
   const { user: firebaseUser, loading: authLoading } = useAuth();
 
@@ -67,13 +112,14 @@ export function BookingApp() {
     state, currentStep, direction, auth, showMyBookings, showHighlights,
     selectCourt, selectDateTime, selectDuration,
     updateAddon, setClientDetails,
-    nextStep, prevStep, completeBooking, resetBooking,
+    nextStep, prevStep, goToStep, completeBooking, resetBooking,
     login, logout, setShowMyBookings, setShowHighlights,
     getTotalPrice, canProceed,
   } = useBooking();
 
   const [sharedClipSlot, setSharedClipSlot] = useState<SharedClipSlot | null>(parseSharedClipSlot);
   const [joinToken, setJoinToken] = useState<string | null>(parseJoinToken);
+  const [deepLink] = useState<DeepLinkBooking | null>(parseDeepLinkBooking);
 
   // Sync the local booking auth state with Firebase Auth.
   useEffect(() => {
@@ -109,11 +155,14 @@ export function BookingApp() {
     });
   }, [auth.isLoggedIn, auth.user?.email]);
 
-  const [selectedDuration, setSelectedDurationState] = useState<1 | 1.5 | 2>(1);
+  const [selectedDuration, setSelectedDurationState] = useState<1 | 1.5 | 2>(deepLink?.duration ?? 1);
   const [bookingRef, setBookingRef] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [emailToast, setEmailToast] = useState<{ msg: string; ok: boolean } | null>(null);
-  const [showHomePage, setShowHomePage] = useState(true);
+  const [emailToast, setEmailToast] = useState<{ msg: string; ok: boolean; title?: string } | null>(null);
+  const [showHomePage, setShowHomePage] = useState(!deepLink);
+  // Confirm-step auth for the deep-link guest flow (K-8 Part 2)
+  const [authPrompt, setAuthPrompt] = useState(false);
+  const [resumePending, setResumePending] = useState(false);
   // Settings overlay
   const [showSettings, setShowSettings] = useState(false);
   // Terms acknowledgment gate — shown before every booking confirmation
@@ -146,120 +195,13 @@ export function BookingApp() {
 
   const totalPrice = getTotalPrice();
 
-  // Show a loading state while Firebase Auth initializes or while we're syncing the profile.
-  if (!DEMO_MODE && (authLoading || (firebaseUser && !auth.isLoggedIn))) {
-    return (
-      <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#1B7A40]/30 border-t-[#1B7A40] rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  // Step navigation with history tracking for back button support
-  const handleNextStep = () => {
-    nextStep();
-    // Push next step to history so back button navigates through steps
-    if (currentStep < 3) {
-      pushWizardStep(currentStep + 1);
-    }
-  };
-
-  const handleConfirmAndComplete = async () => {
-    await handleConfirmBooking();
-    pushWizardStep(5);
-  };
-
-  if (joinToken) {
-    if (!auth.isLoggedIn) {
-      return <LoginPage onLogin={login} contextMessage="Sign in or create an account to join this booking." />;
-    }
-    return (
-      <JoinBooking
-        token={joinToken}
-        userEmail={auth.user!.email}
-        onJoined={() => {
-          setJoinToken(null);
-          window.history.replaceState({}, '', window.location.pathname + '#/');
-          setShowHomePage(true);
-        }}
-      />
-    );
-  }
-
-  if (auth.isLoggedIn && showMyBookings) {
-    return <MyBookings userEmail={auth.user!.email} onClose={() => setShowMyBookings(false)} />;
-  }
-
-  if (auth.isLoggedIn && showSettings) {
-    return (
-      <ClientSettings
-        userEmail={auth.user!.email}
-        onClose={() => setShowSettings(false)}
-      />
-    );
-  }
-
-  if (auth.isLoggedIn && showHighlights) {
-    return (
-      <StellaClips
-        userEmail={auth.user!.email}
-        sharedSlot={sharedClipSlot || undefined}
-        onClose={() => {
-          setShowHighlights(false);
-          setSharedClipSlot(null);
-          // Clean up share params from URL so a refresh doesn't reopen clips
-          if (window.location.search.includes('shareClips=')) {
-            window.history.replaceState({}, '', window.location.pathname);
-          }
-        }}
-      />
-    );
-  }
-
-  if (!auth.isLoggedIn) {
-    return (
-      <LoginPage
-        onLogin={login}
-        contextMessage={sharedClipSlot ? 'Sign in or create an account to view shared Stella Clips.' : undefined}
-      />
-    );
-  }
-
-  // Show home page after login (before booking wizard)
-  if (showHomePage) {
-    return (
-      <HomePage
-        userName={auth.user?.name || 'Player'}
-        onBookCourt={() => {
-          setShowHomePage(false);
-          // Reset to step 1 for a fresh booking
-          resetBooking();
-          // Push initial step so back button can navigate through wizard
-          pushWizardStep(1);
-        }}
-        onStellaClips={() => setShowHighlights(true)}
-        onMyBookings={() => setShowMyBookings(true)}
-        onSettings={() => setShowSettings(true)}
-      />
-    );
-  }
-
-  const handleSelectCourt = (court: typeof state.court) => {
-    if (court) selectCourt(court);
-  };
-
-  const handleSelectDuration = (duration: 1 | 1.5 | 2) => {
-    setSelectedDurationState(duration);
-    if (state.dateTime) selectDuration(duration);
-  };
-
-  const handleSelectDateTime = (dt: typeof state.dateTime) => {
-    if (dt) selectDateTime({ ...dt, duration: selectedDuration });
-  };
-
-  const handleBookAnother = () => {
-    resetBooking();
-    setShowHomePage(true);
+  // Persist the in-flight booking so the confirm-step auth (or a reload) can't lose it (K-8 Part 2).
+  const persistPendingBooking = () => {
+    try {
+      sessionStorage.setItem(PENDING_BOOKING_KEY, JSON.stringify({
+        court: state.court, dateTime: state.dateTime, addons: state.addons,
+      }));
+    } catch { /* storage blocked/full — auth still shows; booking just won't auto-resume */ }
   };
 
   const handleConfirmBooking = async () => {
@@ -268,7 +210,14 @@ export function BookingApp() {
       setTimeout(() => setEmailToast(null), 6000);
       return;
     }
-    if (!state.court || !state.dateTime || !auth.user) return;
+    if (!state.court || !state.dateTime) return;
+    // Guest on the deep-link flow: auth is required AT the confirm step only (K-8 Part 2).
+    // Stash the wizard state, show login/register; the resume effect below completes it.
+    if (!auth.user) {
+      persistPendingBooking();
+      setAuthPrompt(true);
+      return;
+    }
     const user = auth.user;
     setConfirming(true);
 
@@ -342,11 +291,209 @@ export function BookingApp() {
 
     } catch (err: unknown) {
       console.error('Booking confirmation failed:', err);
-      setEmailToast({ msg: `Booking failed: ${getErrorMessage(err)}`, ok: false });
-      setTimeout(() => setEmailToast(null), 8000);
+      const msg = getErrorMessage(err);
+      if (/no longer available/i.test(msg)) {
+        // Lost the slot race: createBooking answered 409 'Slot no longer available'.
+        // Friendly message + back to availability (K-8 Part 2) — never a raw error.
+        setEmailToast({ msg: 'That slot was just taken — please pick another time.', ok: false, title: 'Slot taken' });
+        setTimeout(() => setEmailToast(null), 8000);
+        goToStep(2);
+      } else {
+        setEmailToast({ msg: `Booking failed: ${msg}`, ok: false });
+        setTimeout(() => setEmailToast(null), 8000);
+      }
     } finally {
       setConfirming(false);
     }
+  };
+
+  const handleConfirmAndComplete = async () => {
+    await handleConfirmBooking();
+    pushWizardStep(5);
+  };
+
+  // Deep link (?book=1…): pre-fill court + date + time and jump straight to add-ons
+  // (K-8 Part 1). Runs once on mount; params are cleaned (mirrors the shareClips flow)
+  // so a refresh can't re-trigger the jump. Mount-only by design — goToStep is not stable.
+  useEffect(() => {
+    if (!deepLink) return;
+    const court = COURTS.find(c => c.id === deepLink.courtId);
+    if (!court) return;
+    selectCourt(court);
+    selectDateTime({ date: deepLink.date, time: deepLink.start, duration: deepLink.duration });
+    setSelectedDurationState(deepLink.duration);
+    goToStep(3);
+    window.history.replaceState({}, '', window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Resume a pending deep-link booking once the confirm-step auth succeeded (K-8 Part 2):
+  // restore the wizard state, then re-run the same confirm (fire effect below).
+  useEffect(() => {
+    if (!auth.isLoggedIn || !auth.user) return;
+    const raw = sessionStorage.getItem(PENDING_BOOKING_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(PENDING_BOOKING_KEY);
+    try {
+      const pending = JSON.parse(raw) as { court?: Court; dateTime?: DateTimeSelection; addons?: Addons };
+      if (pending.court) selectCourt(pending.court);
+      if (pending.dateTime) {
+        selectDateTime(pending.dateTime);
+        setSelectedDurationState(pending.dateTime.duration || 1);
+      }
+      if (pending.addons) {
+        updateAddon('soccerBall', pending.addons.soccerBall ?? 0);
+        updateAddon('bibs', pending.addons.bibs ?? 0);
+      }
+      setAuthPrompt(false);
+      setShowHomePage(false);
+      setResumePending(true);
+    } catch { /* malformed payload — already dropped, nothing to resume */ }
+  }, [auth.isLoggedIn, auth.user, selectCourt, selectDateTime, updateAddon]);
+
+  // Fire the confirm only after the restored state has actually landed. The user already
+  // accepted the terms before the auth prompt — this continues that same confirm.
+  useEffect(() => {
+    if (!resumePending || !auth.user || !state.court || !state.dateTime) return;
+    setResumePending(false);
+    void handleConfirmAndComplete();
+  }, [resumePending, auth.user, state.court, state.dateTime, handleConfirmAndComplete]);
+
+  // "Book now" from a slot-released in-app notification (K-8 Part 3): the same pre-filled
+  // wizard as the push deep link, routed in-app with the notification's own fields.
+  const handleBookNow = (n: NotificationRecord) => {
+    const court = COURTS.find(c => c.id === n.courtId);
+    if (!court || !n.date || !n.startTime) return;
+    const duration = (n.endTime && durationFromStartEnd(n.startTime, n.endTime)) || 1;
+    resetBooking();
+    selectCourt(court);
+    selectDateTime({ date: n.date, time: n.startTime, duration });
+    setSelectedDurationState(duration);
+    setShowMyBookings(false);
+    setShowHighlights(false);
+    setShowSettings(false);
+    setShowHomePage(false);
+    goToStep(3);
+    markRead(n.id);
+  };
+
+  // Show a loading state while Firebase Auth initializes or while we're syncing the profile.
+  if (!DEMO_MODE && (authLoading || (firebaseUser && !auth.isLoggedIn))) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#1B7A40]/30 border-t-[#1B7A40] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Step navigation with history tracking for back button support
+  const handleNextStep = () => {
+    nextStep();
+    // Push next step to history so back button navigates through steps
+    if (currentStep < 3) {
+      pushWizardStep(currentStep + 1);
+    }
+  };
+
+  if (joinToken) {
+    if (!auth.isLoggedIn) {
+      return <LoginPage onLogin={login} contextMessage="Sign in or create an account to join this booking." />;
+    }
+    return (
+      <JoinBooking
+        token={joinToken}
+        userEmail={auth.user!.email}
+        onJoined={() => {
+          setJoinToken(null);
+          window.history.replaceState({}, '', window.location.pathname + '#/');
+          setShowHomePage(true);
+        }}
+      />
+    );
+  }
+
+  if (auth.isLoggedIn && showMyBookings) {
+    return <MyBookings userEmail={auth.user!.email} onClose={() => setShowMyBookings(false)} />;
+  }
+
+  if (auth.isLoggedIn && showSettings) {
+    return (
+      <ClientSettings
+        userEmail={auth.user!.email}
+        onClose={() => setShowSettings(false)}
+      />
+    );
+  }
+
+  if (auth.isLoggedIn && showHighlights) {
+    return (
+      <StellaClips
+        userEmail={auth.user!.email}
+        sharedSlot={sharedClipSlot || undefined}
+        onClose={() => {
+          setShowHighlights(false);
+          setSharedClipSlot(null);
+          // Clean up share params from URL so a refresh doesn't reopen clips
+          if (window.location.search.includes('shareClips=')) {
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        }}
+      />
+    );
+  }
+
+  // Confirm-step auth for the deep-link guest flow (K-8 Part 2): the wizard itself is
+  // walkable as a guest; login/register is only required to CONFIRM the booking.
+  if (!auth.isLoggedIn && authPrompt) {
+    return <LoginPage onLogin={login} contextMessage="Sign in or create an account to confirm your booking." />;
+  }
+
+  // Guests may walk the DEEP-LINKED booking flow without auth (?book=1 — K-8 Part 2);
+  // every other guest path still lands on the login wall.
+  if (!auth.isLoggedIn && !deepLink) {
+    return (
+      <LoginPage
+        onLogin={login}
+        contextMessage={sharedClipSlot ? 'Sign in or create an account to view shared Stella Clips.' : undefined}
+      />
+    );
+  }
+
+  // Show home page after login (before booking wizard)
+  if (showHomePage) {
+    return (
+      <HomePage
+        userName={auth.user?.name || 'Player'}
+        onBookCourt={() => {
+          setShowHomePage(false);
+          // Reset to step 1 for a fresh booking
+          resetBooking();
+          // Push initial step so back button can navigate through wizard
+          pushWizardStep(1);
+        }}
+        onStellaClips={() => setShowHighlights(true)}
+        onMyBookings={() => setShowMyBookings(true)}
+        onSettings={() => setShowSettings(true)}
+      />
+    );
+  }
+
+  const handleSelectCourt = (court: typeof state.court) => {
+    if (court) selectCourt(court);
+  };
+
+  const handleSelectDuration = (duration: 1 | 1.5 | 2) => {
+    setSelectedDurationState(duration);
+    if (state.dateTime) selectDuration(duration);
+  };
+
+  const handleSelectDateTime = (dt: typeof state.dateTime) => {
+    if (dt) selectDateTime({ ...dt, duration: selectedDuration });
+  };
+
+  const handleBookAnother = () => {
+    resetBooking();
+    setShowHomePage(true);
   };
 
   const stepContent = () => {
@@ -392,6 +539,7 @@ export function BookingApp() {
         onMarkRead={markRead}
         onMarkAllRead={markAllRead}
         onDeleteNotification={deleteNotification}
+        onBookNow={handleBookNow}
       />
 
       <main className="flex-1 pt-14">
@@ -495,7 +643,7 @@ export function BookingApp() {
               {emailToast.ok ? <MailCheck className="w-5 h-5 text-white" /> : <MailWarning className="w-5 h-5 text-white" />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-white">{emailToast.ok ? 'Email Sent' : 'Email Failed'}</p>
+              <p className="text-sm font-bold text-white">{emailToast.title ?? (emailToast.ok ? 'Email Sent' : 'Email Failed')}</p>
               <p className="text-xs text-white/80 mt-0.5">{emailToast.msg}</p>
             </div>
           </motion.div>

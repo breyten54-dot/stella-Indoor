@@ -8,6 +8,7 @@ interface Props {
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
   onDelete: (id: string) => void;
+  onBookNow?: (n: NotificationRecord) => void;
 }
 
 const TYPE_CONFIG: Record<string, { icon: typeof Clock; color: string; bgColor: string }> = {
@@ -15,9 +16,10 @@ const TYPE_CONFIG: Record<string, { icon: typeof Clock; color: string; bgColor: 
   'reminder-1h': { icon: Clock, color: 'text-[#7ED321]', bgColor: 'bg-[#1B7A40]/10' },
   'reminder-30m': { icon: Clock, color: 'text-[#22c55e]', bgColor: 'bg-[#22c55e]/10' },
   'reminder-5m': { icon: BellRing, color: 'text-[#7ED321]', bgColor: 'bg-[#1B7A40]/10' },
+  'slot-released': { icon: BellRing, color: 'text-[#7ED321]', bgColor: 'bg-[#1B7A40]/10' },
 };
 
-export function NotificationBell({ notifications, unreadCount, onMarkRead, onMarkAllRead, onDelete }: Props) {
+export function NotificationBell({ notifications, unreadCount, onMarkRead, onMarkAllRead, onDelete, onBookNow }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -87,7 +89,7 @@ export function NotificationBell({ notifications, unreadCount, onMarkRead, onMar
                         <div className="flex items-center gap-1.5 mb-0.5">
                           <Icon className={`w-3 h-3 ${config.color}`} />
                           <span className={`text-[10px] font-bold ${config.color}`}>
-                            {n.type === 'admin-cancelled' ? 'CANCELLED' : 'REMINDER'}
+                            {n.type === 'admin-cancelled' ? 'CANCELLED' : n.type === 'slot-released' ? 'OPEN SLOT' : 'REMINDER'}
                           </span>
                           <span className="text-[9px] text-[#475569] ml-auto">
                             {new Date(n.createdAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
@@ -97,8 +99,16 @@ export function NotificationBell({ notifications, unreadCount, onMarkRead, onMar
                         <p className="text-[11px] text-[#64748b] mt-0.5 line-clamp-2">{n.message}</p>
                         <div className="flex items-center gap-1 mt-1 text-[9px] text-[#475569]">
                           <Calendar className="w-2.5 h-2.5" />
-                          {n.courtName} &middot; {n.date} &middot; {n.startTime}
+                          {n.courtName} &middot; {n.date} &middot; {n.startTime}{n.endTime ? `–${n.endTime}` : ''}
                         </div>
+                        {n.type === 'slot-released' && onBookNow && n.courtId && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onBookNow(n); setOpen(false); }}
+                            className="mt-2 h-7 px-3 rounded-lg bg-[#1B7A40] hover:bg-[#145C32] text-white text-[11px] font-bold transition-colors active:scale-95"
+                          >
+                            Book now
+                          </button>
+                        )}
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); onDelete(n.id); }}

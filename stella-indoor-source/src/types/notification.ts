@@ -19,6 +19,10 @@ export interface NotificationRecord {
   createdAt: number;
   scheduledFor?: number; // For reminders — when to show
   shown?: boolean;       // Whether browser notification was shown
+  // slot-released deep-link fields (absent on older docs and other types)
+  courtId?: string;
+  endTime?: string;
+  url?: string;
 }
 
 export interface NotificationState {

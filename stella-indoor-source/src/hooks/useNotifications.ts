@@ -23,6 +23,9 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
     createdAt: d.createdAt as number,
     scheduledFor: d.scheduledFor as number | undefined,
     shown: (d.shown as boolean) || false,
+    courtId: (d.courtId as string) || undefined,
+    endTime: (d.endTime as string) || undefined,
+    url: (d.url as string) || undefined,
   };
 }
 
