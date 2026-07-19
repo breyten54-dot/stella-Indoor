@@ -1,13 +1,21 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarDays, Clapperboard, List, ChevronRight, Settings } from 'lucide-react';
+import { CalendarDays, List, ChevronRight, Settings } from 'lucide-react';
+import { NotificationBell } from '@/components/NotificationBell';
+import type { NotificationRecord } from '@/types/notification';
 
 interface HomePageProps {
   userName: string;
   onBookCourt: () => void;
-  onStellaClips: () => void;
   onMyBookings: () => void;
   onSettings?: () => void;
+  // Notification bell (top-right) — same wiring as the wizard Navbar's bell (K-18/D2)
+  notifications?: NotificationRecord[];
+  unreadCount?: number;
+  onMarkRead?: (id: string) => void;
+  onMarkAllRead?: () => void;
+  onDeleteNotification?: (id: string) => void;
+  onBookNow?: (n: NotificationRecord) => void;
 }
 
 const BG_IMAGES = ['/bg-1.jpg', '/bg-2.jpg', '/bg-3.jpg', '/bg-4.jpg'];
@@ -115,7 +123,7 @@ function SlideIndicators({ current }: { current: number }) {
   );
 }
 
-export function HomePage({ userName, onBookCourt, onStellaClips, onMyBookings, onSettings }: HomePageProps) {
+export function HomePage({ userName, onBookCourt, onMyBookings, onSettings, notifications, unreadCount, onMarkRead, onMarkAllRead, onDeleteNotification, onBookNow }: HomePageProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
 
   // Keep track of the current slide for indicators
@@ -146,6 +154,22 @@ export function HomePage({ userName, onBookCourt, onStellaClips, onMyBookings, o
             >
               <Settings className="w-5 h-5" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Notifications bell — top-right, mirrors the Settings cog container (K-18/D2) */}
+      {notifications && onMarkRead && onMarkAllRead && onDeleteNotification && (
+        <div className="absolute top-4 right-4 z-40">
+          <div className="rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 p-2">
+            <NotificationBell
+              notifications={notifications}
+              unreadCount={unreadCount || 0}
+              onMarkRead={onMarkRead}
+              onMarkAllRead={onMarkAllRead}
+              onDelete={onDeleteNotification}
+              onBookNow={onBookNow}
+            />
           </div>
         </div>
       )}
@@ -239,28 +263,8 @@ export function HomePage({ userName, onBookCourt, onStellaClips, onMyBookings, o
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
           </motion.button>
 
-          {/* Stella Clips */}
-          <motion.button
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.7, duration: 0.5 }}
-            whileHover={{ scale: 1.02, y: -2 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={onStellaClips}
-            className="w-full group relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 p-5 text-left shadow-lg transition-all hover:bg-white/15 hover:border-white/20"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-                <Clapperboard className="w-7 h-7 text-[#7ED321]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-bold text-lg leading-tight">Stella Clips</p>
-                <p className="text-white/50 text-xs mt-0.5">Watch game highlights &amp; action</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-white/30 group-hover:text-[#7ED321] group-hover:translate-x-1 transition-all" />
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-          </motion.button>
+          {/* Stella Clips tile HIDDEN (K-18/D1) — the feature is a Coming-Soon placeholder;
+              the shared-clip deep-link viewer stays reachable via ?shareClips=1 links. */}
 
           {/* My Bookings */}
           <motion.button

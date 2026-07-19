@@ -18,10 +18,9 @@ export function useBackButton(
   const [exitPrompt, setExitPrompt] = useState(false);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
-
     const handlePopState = () => {
-      // Wizard is active — navigate backward through steps
+      // Wizard is active — navigate backward through steps (guests included, K-18/D4:
+      // the guest deep-link wizard must also step back instead of exiting).
       if (wizardActive && currentStep > 1) {
         onStepBack();
         // Re-push a state so the next back also triggers popstate
@@ -29,12 +28,18 @@ export function useBackButton(
         return;
       }
 
-      // Wizard at step 1 — go back to home page
+      // Wizard at step 1 — logged-in users go back to the home page; a GUEST has no
+      // authed home, so Back is left to exit the app (not trapped).
       if (wizardActive && currentStep === 1) {
-        onGoHome();
-        window.history.pushState({ stellaStep: 0 }, '', '');
+        if (isLoggedIn) {
+          onGoHome();
+          window.history.pushState({ stellaStep: 0 }, '', '');
+        }
         return;
       }
+
+      // Everything below is for signed-in users only.
+      if (!isLoggedIn) return;
 
       // On home page — first back = exit prompt, second back = logout
       if (isHomePage) {
