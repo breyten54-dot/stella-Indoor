@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router';
 import { useAdminAuth } from './hooks/useAdminAuth';
 import { useAdminBookings } from './hooks/useAdminBookings';
 import { useAdminClients } from './hooks/useAdminClients';
 import { useBlockedSlots } from './hooks/useBlockedSlots';
+import { subscribeToPush, getNotificationPermission, isPushSupported } from './lib/pushNotifications';
 import { cancelBooking } from '@/hooks/useFirestoreBookings';
 import { getErrorMessage } from '@/lib/error';
 import { adjustAttendanceCounters } from '@/hooks/useFirestoreUsers';
@@ -30,6 +31,17 @@ export default function App() {
   const updater = <ServiceWorkerUpdater swPath="/sw-admin.js" variant="admin" />;
 
   const { isAdmin, user, login, logout, loading: authLoading } = useAdminAuth();
+
+  // Silently refresh the admin push subscription on every authenticated open when
+  // permission is ALREADY granted — mirrors the client's per-open re-subscribe
+  // (BookingApp.tsx) so a stale/rotated endpoint self-heals (K-16). Never prompts
+  // on open: first-time opt-in stays with the banner/Settings button, and the
+  // permission guard means requestPermission is never reached when it could prompt.
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (!isPushSupported() || getNotificationPermission() !== 'granted') return;
+    subscribeToPush().catch((err) => console.warn('[admin] push refresh failed:', err));
+  }, [isAdmin]);
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
