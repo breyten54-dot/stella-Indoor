@@ -9,9 +9,10 @@ interface Props {
   clients: ClientRecord[];
   bookings: BookingRecord[];
   loading: boolean;
+  error?: string | null;
 }
 
-export function Clients({ clients, bookings, loading }: Props) {
+export function Clients({ clients, bookings, loading, error }: Props) {
   const [search, setSearch] = useState('');
   const [bookerFilter, setBookerFilter] = useState<'all' | 'new' | 'recurring'>('all');
   const [selectedClient, setSelectedClient] = useState<ClientRecord | null>(null);
@@ -59,6 +60,11 @@ export function Clients({ clients, bookings, loading }: Props) {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-sm text-red-400">
+          Couldn&rsquo;t load clients — {error}
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

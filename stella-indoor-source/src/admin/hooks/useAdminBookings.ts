@@ -42,9 +42,10 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
   };
 }
 
-export function useAdminBookings() {
+export function useAdminBookings(authReady: boolean) {
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<BookingNotification[]>([]);
   const prevBookings = useRef<BookingRecord[]>([]);
   const notifRequested = useRef(false);
@@ -60,6 +61,8 @@ export function useAdminBookings() {
   }, []);
 
   useEffect(() => {
+    // Don't subscribe until admin auth is confirmed (K-15 — see useAdminClients).
+    if (!authReady) return;
     setLoading(true);
     const unsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
       const data = snapshot.docs.map(docFromSnapshot);
@@ -125,13 +128,16 @@ export function useAdminBookings() {
 
       prevBookings.current = data;
       setBookings(data);
+      setError(null);
       setLoading(false);
     }, (err) => {
+      // Fail LOUD, never silently zero (BUILD-STANDARDS #16)
       console.warn('[useAdminBookings] snapshot error:', err);
+      setError(err instanceof Error ? err.message : String(err));
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [authReady]);
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
@@ -189,7 +195,7 @@ export function useAdminBookings() {
   }, [bookings]);
 
   return {
-    bookings, stats, loading, dailyStats, courtStats,
+    bookings, stats, loading, error, dailyStats, courtStats,
     notifications, unreadCount, markAllRead, markRead, clearNotifications,
   };
 }

@@ -110,23 +110,30 @@ function docFromSnapshot(snap: { id: string; data: () => Record<string, unknown>
   };
 }
 
-export function useBlockedSlots() {
+export function useBlockedSlots(authReady: boolean) {
   const [slots, setSlots] = useState<BlockedSlot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Don't subscribe until admin auth is confirmed (K-15 — see useAdminClients).
+    if (!authReady) return;
     setLoading(true);
     const q = query(collection(db, COLLECTION), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(docFromSnapshot);
       setSlots(data);
+      setError(null);
       setLoading(false);
-    }, () => {
+    }, (err) => {
+      // Fail LOUD, never silently zero (BUILD-STANDARDS #16)
+      console.warn('[useBlockedSlots] snapshot error:', err);
       setSlots([]);
+      setError(err instanceof Error ? err.message : String(err));
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [authReady]);
 
   const createBlockedSlot = useCallback(async (data: Omit<BlockedSlot, 'id' | 'createdAt'>): Promise<void> => {
     const dayOfWeek = new Date(data.startDate).getDay();
@@ -195,6 +202,7 @@ export function useBlockedSlots() {
   return {
     slots,
     loading,
+    error,
     createBlockedSlot,
     deleteBlockedSlot,
     updateBlockedSlot,

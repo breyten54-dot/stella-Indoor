@@ -37,8 +37,8 @@ function cadenceLabel(c: PaymentCadence): string {
 }
 
 export function BlockDetailModal({ block, viewDate, bookings, onClose }: BlockDetailModalProps) {
-  const { updateBlockedSlot } = useBlockedSlots();
-  const { firebaseUser } = useAdminAuth();
+  const { firebaseUser, isAdmin } = useAdminAuth();
+  const { updateBlockedSlot } = useBlockedSlots(isAdmin);
   const adminEmail = firebaseUser?.email || '';
   const { note, saveNote } = useBlockNotes(block.id);
 
