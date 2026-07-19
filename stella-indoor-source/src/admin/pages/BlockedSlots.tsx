@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { blockAppliesToDate, type BlockedSlot, type BlockType } from '../hooks/useBlockedSlots';
 import { localDateStr } from '@/lib/dates';
+import { AdminTimeInput } from '@/admin/components/AdminTimeInput';
 
 interface Props {
   slots: BlockedSlot[];
@@ -573,8 +574,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Start Time</label>
-                  <input
-                    type="time"
+                  <AdminTimeInput
                     value={editForm.startTime || ''}
                     onChange={e => setEditForm({ ...editForm, startTime: e.target.value })}
                     className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#6366f1] focus:outline-none transition-colors"
@@ -582,8 +582,7 @@ export function BlockedSlots({ slots, loading, onCreate, onDelete, onUpdate }: P
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">End Time</label>
-                  <input
-                    type="time"
+                  <AdminTimeInput
                     value={editForm.endTime || ''}
                     onChange={e => setEditForm({ ...editForm, endTime: e.target.value })}
                     className="w-full h-11 bg-[#0f1629] border border-[#1e293b] rounded-xl px-4 text-white text-sm focus:border-[#6366f1] focus:outline-none transition-colors"
@@ -996,11 +995,11 @@ function CreateBlockModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">Start Time</label>
-              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className={inputClass} />
+              <AdminTimeInput value={startTime} onChange={e => setStartTime(e.target.value)} className={inputClass} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-[#64748b] uppercase tracking-wider mb-1.5">End Time</label>
-              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className={inputClass} />
+              <AdminTimeInput value={endTime} onChange={e => setEndTime(e.target.value)} className={inputClass} />
               {errors.endTime && <p className="text-xs text-red-400 mt-1">{errors.endTime}</p>}
             </div>
           </div>

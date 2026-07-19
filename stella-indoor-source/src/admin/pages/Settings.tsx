@@ -5,6 +5,7 @@ import { isPushSupported, subscribeToPush, unsubscribeFromPush, isPushSubscribed
 import { useInstallPrompt, InstallModal } from '@/components/InstallModal';
 import { useAppSettings } from '@/admin/hooks/useAppSettings';
 import { BatteryOptimizationGuide, BatteryOptimizationButton } from '@/admin/components/BatteryOptimizationGuide';
+import { AdminTimeInput } from '@/admin/components/AdminTimeInput';
 import { PushDiagnostics } from '@/admin/components/PushDiagnostics';
 import { NotificationSetupGuide } from '@/admin/components/NotificationSetupGuide';
 
@@ -172,17 +173,17 @@ export function Settings() {
           <div className={rowClass}>
             <span className="text-sm text-[#cbd5e1]">Monday — Saturday</span>
             <div className="flex items-center gap-2">
-              <input type="time" value={openingTime} onChange={e => setOpeningTime(e.target.value)} className={inputClass} />
+              <AdminTimeInput value={openingTime} onChange={e => setOpeningTime(e.target.value)} className={inputClass} />
               <span className="text-[#475569]">to</span>
-              <input type="time" value={closingTime} onChange={e => setClosingTime(e.target.value)} className={inputClass} />
+              <AdminTimeInput value={closingTime} onChange={e => setClosingTime(e.target.value)} className={inputClass} />
             </div>
           </div>
           <div className={rowClass}>
             <span className="text-sm text-[#cbd5e1]">Sunday</span>
             <div className="flex items-center gap-2">
-              <input type="time" value={openingTime} disabled className={`${inputClass} opacity-50`} />
+              <AdminTimeInput value={openingTime} disabled className={`${inputClass} opacity-50`} />
               <span className="text-[#475569]">to</span>
-              <input type="time" value={sunClosing} onChange={e => setSunClosing(e.target.value)} className={inputClass} />
+              <AdminTimeInput value={sunClosing} onChange={e => setSunClosing(e.target.value)} className={inputClass} />
             </div>
           </div>
         </div>
