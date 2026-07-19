@@ -48,17 +48,11 @@ export function useAdminBookings(authReady: boolean) {
   const [error, setError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<BookingNotification[]>([]);
   const prevBookings = useRef<BookingRecord[]>([]);
-  const notifRequested = useRef(false);
 
-  // Request browser notification permission on first load
-  useEffect(() => {
-    if (!notifRequested.current && 'Notification' in window) {
-      notifRequested.current = true;
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
-  }, []);
+  // K-16B: the mount-time Notification.requestPermission() effect was removed — it
+  // fired an ungestured prompt on every app load (pre-login), and a dismiss/deny
+  // permanently hid the opt-in banner. Permission is now requested ONLY from the
+  // explicit opt-in click (banner/Settings → subscribeToPush).
 
   useEffect(() => {
     // Don't subscribe until admin auth is confirmed (K-15 — see useAdminClients).
