@@ -105,6 +105,14 @@ function parseDeepLinkBooking(): DeepLinkBooking | null {
   if (!COURTS.some(c => c.id === courtId)) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < localDateStr(new Date())) return null;
   if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return null;
+  // A TODAY link whose start is already past is not a usable deep link (K-20): fall
+  // back to the normal flow instead of dropping the user into a booking the server
+  // will reject with 400. Local time-of-day compare (BUILD-STANDARDS #22).
+  const now = new Date();
+  if (date === localDateStr(now)) {
+    const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    if (start <= nowHHMM) return null;
+  }
   const duration = durationFromStartEnd(start, end);
   return { courtId, date, start, duration };
 }
