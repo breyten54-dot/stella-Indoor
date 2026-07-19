@@ -71,7 +71,10 @@ interface DeepLinkBooking {
   courtId: string;
   date: string;
   start: string;
-  duration: DurationOption;
+  // null when the released window isn't a standard 1/1.5/2h booking duration (K-18/D3):
+  // the start time is still preselected and the user picks a valid duration instead of
+  // being dropped at Home.
+  duration: DurationOption | null;
 }
 
 // Minutes for an HH:MM string; NaN on malformed input.
@@ -88,8 +91,10 @@ function durationFromStartEnd(start: string, end: string): DurationOption | null
 
 // ?book=1&court=<courtId>&date=<YYYY-MM-DD>&start=<HH:MM>&end=<HH:MM> — carried by
 // slot-released pushes/notifications (K-8). Returns null unless every part is present
-// and sane (unknown court, malformed or PAST date, non-bookable window → caller behaves
-// as if there were no deep link). Date check uses LOCAL date keys (BUILD-STANDARDS #22).
+// and sane (unknown court, malformed or PAST date → caller behaves as if there were no
+// deep link). A non-standard window (not 1/1.5/2h) is NOT fatal: duration comes back
+// null and the wizard preselects the start time instead (K-18/D3).
+// Date check uses LOCAL date keys (BUILD-STANDARDS #22).
 function parseDeepLinkBooking(): DeepLinkBooking | null {
   const params = new URLSearchParams(window.location.search);
   if (params.get('book') !== '1') return null;
@@ -101,7 +106,6 @@ function parseDeepLinkBooking(): DeepLinkBooking | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < localDateStr(new Date())) return null;
   if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return null;
   const duration = durationFromStartEnd(start, end);
-  if (!duration) return null;
   return { courtId, date, start, duration };
 }
 
@@ -176,8 +180,9 @@ export function BookingApp() {
     deleteNotification,
   } = useNotifications(auth.user?.email || null);
 
-  // Back button handler: step-by-step wizard navigation
-  const wizardActive = auth.isLoggedIn && !showHomePage && !showMyBookings && !showHighlights && !showSettings && currentStep < 5;
+  // Back button handler: step-by-step wizard navigation. The guest deep-link path
+  // (K-8) counts as wizard-active too so guests step back through the wizard (K-18/D4).
+  const wizardActive = (auth.isLoggedIn || !!deepLink) && !showHomePage && !showMyBookings && !showHighlights && !showSettings && currentStep < 5;
   const { exitPrompt } = useBackButton(
     auth.isLoggedIn,
     showHomePage && !showMyBookings && !showHighlights,
@@ -312,18 +317,24 @@ export function BookingApp() {
     pushWizardStep(5);
   };
 
-  // Deep link (?book=1…): pre-fill court + date + time and jump straight to add-ons
-  // (K-8 Part 1). Runs once on mount; params are cleaned (mirrors the shareClips flow)
-  // so a refresh can't re-trigger the jump. Mount-only by design — goToStep is not stable.
+  // Deep link (?book=1…): pre-fill court + date + time. Standard window (1/1.5/2h) →
+  // jump straight to add-ons (K-8). Non-standard window → land on the TIME step with the
+  // start preselected so the user picks a valid duration instead of being dropped at
+  // Home (K-18/D3). Runs once on mount; params are cleaned (mirrors shareClips) so a
+  // refresh can't re-trigger. Mount-only by design — goToStep is not stable. A history
+  // buffer state is pushed so the FIRST browser-back is intercepted (K-18/D4).
   useEffect(() => {
     if (!deepLink) return;
     const court = COURTS.find(c => c.id === deepLink.courtId);
     if (!court) return;
+    const duration = deepLink.duration ?? 1;
     selectCourt(court);
-    selectDateTime({ date: deepLink.date, time: deepLink.start, duration: deepLink.duration });
-    setSelectedDurationState(deepLink.duration);
-    goToStep(3);
+    selectDateTime({ date: deepLink.date, time: deepLink.start, duration });
+    setSelectedDurationState(duration);
+    const step = deepLink.duration ? 3 : 2;
+    goToStep(step);
     window.history.replaceState({}, '', window.location.pathname);
+    pushWizardStep(step);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -471,9 +482,14 @@ export function BookingApp() {
           // Push initial step so back button can navigate through wizard
           pushWizardStep(1);
         }}
-        onStellaClips={() => setShowHighlights(true)}
         onMyBookings={() => setShowMyBookings(true)}
         onSettings={() => setShowSettings(true)}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkRead={markRead}
+        onMarkAllRead={markAllRead}
+        onDeleteNotification={deleteNotification}
+        onBookNow={handleBookNow}
       />
     );
   }
