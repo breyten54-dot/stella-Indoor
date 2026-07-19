@@ -927,6 +927,14 @@ export const createBooking = onRequest({ region: 'europe-west1', minInstances: 1
       return;
     }
 
+    // Reject a start time that has already passed (K-20). bookingTimestampMs is the
+    // project's canonical slot→instant conversion (SAST, UTC+2 — see the reminder
+    // scheduler at line ~406), so the comparison is timezone-correct.
+    if (bookingTimestampMs(body.date, body.startTime) <= Date.now()) {
+      res.status(400).json({ success: false, error: 'That time slot has already passed.' });
+      return;
+    }
+
     const [h, m] = body.startTime.split(':').map(Number);
     const totalMinutes = h * 60 + m + body.duration * 60;
     const endH = Math.floor(totalMinutes / 60);
