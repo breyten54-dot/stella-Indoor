@@ -38,17 +38,17 @@ export default function App() {
     setTimeout(() => setToast(null), 4000);
   };
   const {
-    bookings, stats, loading, dailyStats, courtStats,
+    bookings, stats, loading, error: bookingsError, dailyStats, courtStats,
     notifications, unreadCount, markAllRead, markRead, clearNotifications,
-  } = useAdminBookings();
-  const { clients, loading: clientsLoading } = useAdminClients();
+  } = useAdminBookings(isAdmin);
+  const { clients, loading: clientsLoading, error: clientsError } = useAdminClients(isAdmin);
   const {
     slots: blockedSlots,
     loading: blocksLoading,
     createBlockedSlot,
     deleteBlockedSlot,
     updateBlockedSlot,
-  } = useBlockedSlots();
+  } = useBlockedSlots(isAdmin);
 
   const handleCancelBooking = async (booking: import('@/types/booking').BookingRecord) => {
     try {
@@ -118,9 +118,9 @@ export default function App() {
       onClearNotifications={clearNotifications}
     >
       <Routes>
-        <Route path="/" element={<Dashboard bookings={bookings} stats={stats} dailyStats={dailyStats} courtStats={courtStats} onAttendanceChange={handleAttendanceChange} />} />
+        <Route path="/" element={<Dashboard bookings={bookings} stats={stats} dailyStats={dailyStats} courtStats={courtStats} error={bookingsError} onAttendanceChange={handleAttendanceChange} />} />
         <Route path="/calendar" element={<Calendar bookings={bookings} blockedSlots={blockedSlots} onCancelBooking={handleCancelBooking} onAttendanceChange={handleAttendanceChange} />} />
-        <Route path="/clients" element={<Clients clients={clients} bookings={bookings} loading={clientsLoading} />} />
+        <Route path="/clients" element={<Clients clients={clients} bookings={bookings} loading={clientsLoading} error={clientsError} />} />
         <Route path="/blocked-slots" element={
           <BlockedSlots
             slots={blockedSlots}

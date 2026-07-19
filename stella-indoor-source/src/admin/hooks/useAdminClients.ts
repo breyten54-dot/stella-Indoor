@@ -9,11 +9,15 @@ export interface ClientRecord {
   createdAt: number;
 }
 
-export function useAdminClients() {
+export function useAdminClients(authReady: boolean) {
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Don't subscribe until admin auth is confirmed — a pre-auth listener is denied
+    // by the rules and a failed onSnapshot never refires (the all-zeros bug, K-15).
+    if (!authReady) return;
     setLoading(true);
     const unsubscribe = onSnapshot(
       collection(db, 'users'),
@@ -30,15 +34,19 @@ export function useAdminClients() {
         // Sort by name
         data.sort((a, b) => a.name.localeCompare(b.name));
         setClients(data);
+        setError(null);
         setLoading(false);
       },
-      () => {
+      (err) => {
+        // Fail LOUD, never silently zero (BUILD-STANDARDS #16)
+        console.warn('[useAdminClients] snapshot error:', err);
         setClients([]);
+        setError(err instanceof Error ? err.message : String(err));
         setLoading(false);
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [authReady]);
 
-  return { clients, loading };
+  return { clients, loading, error };
 }

@@ -11,6 +11,7 @@ interface Props {
   stats: { totalBookings: number; cancelledBookings: number; todayBookings: number; totalRevenue: number };
   dailyStats: DailyStats[];
   courtStats: { id: string; name: string; bookings: number; revenue: number }[];
+  error?: string | null;
   onAttendanceChange: (booking: BookingRecord, attendance: BookingAttendance) => Promise<void>;
 }
 
@@ -26,7 +27,7 @@ function StatCard({ label, value, icon: Icon }: { label: string; value: string; 
   );
 }
 
-export function Dashboard({ bookings, stats, dailyStats, courtStats, onAttendanceChange }: Props) {
+export function Dashboard({ bookings, stats, dailyStats, courtStats, error, onAttendanceChange }: Props) {
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
   useBodyScrollLock(selectedBooking !== null);
 
@@ -43,6 +44,11 @@ export function Dashboard({ bookings, stats, dailyStats, courtStats, onAttendanc
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-sm text-red-400">
+          Couldn&rsquo;t load bookings — {error}
+        </div>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Bookings" value={stats.totalBookings.toLocaleString()} icon={CalendarDays} />
         <StatCard label="Today" value={stats.todayBookings.toString()} icon={Clock} />
